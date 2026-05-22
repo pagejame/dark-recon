@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getMultipleSnapshots, getMarketStatus } from '@/lib/api/polygon';
 import { getRecentForm4Filings } from '@/lib/api/edgar';
+import { getTodaysBriefing, saveBriefing, type DbBriefing } from '@/lib/db/briefings';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -22,7 +23,24 @@ interface PolygonTickerSnapshot {
   day?: { c?: number };
 }
 
+function dbBriefingToMorningBriefing(row: DbBriefing): MorningBriefing {
+  return {
+    date: row.date,
+    market_status: row.market_status,
+    sentiment: row.sentiment as MorningBriefing['sentiment'],
+    briefing_text: row.briefing_text,
+    top_signals: (row.top_signals as string[]) || [],
+    key_levels: (row.key_levels as MorningBriefing['key_levels']) || [],
+    generated_at: row.generated_at,
+  };
+}
+
 export async function generateMorningBriefing(): Promise<MorningBriefing> {
+  const cached = await getTodaysBriefing();
+  if (cached) {
+    return dbBriefingToMorningBriefing(cached);
+  }
+
   const today = new Date().toDateString();
 
   try {
@@ -77,7 +95,7 @@ Tone: Direct, zero fluff, like a hedge fund analyst. Use real numbers from the d
       .map((b) => (b.type === 'text' ? b.text : ''))
       .join('');
 
-    return {
+    const briefing: MorningBriefing = {
       date: today,
       market_status: marketStatus?.market || 'unknown',
       sentiment,
@@ -102,6 +120,17 @@ Tone: Direct, zero fluff, like a hedge fund analyst. Use real numbers from the d
       ],
       generated_at: new Date().toISOString(),
     };
+
+    await saveBriefing({
+      date: briefing.date,
+      market_status: briefing.market_status,
+      sentiment: briefing.sentiment,
+      briefing_text: briefing.briefing_text,
+      top_signals: briefing.top_signals,
+      key_levels: briefing.key_levels,
+    });
+
+    return briefing;
   } catch (e) {
     console.error('Briefing agent error:', e);
     throw e;

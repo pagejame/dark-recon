@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getMultipleSnapshots } from '@/lib/api/polygon';
+import { saveSignal, signalExistsRecently } from '@/lib/db/signals';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -85,13 +86,28 @@ Return only valid JSON, no other text.`,
     const clean = text.replace(/```json|```/g, '').trim();
     const signals: ClaudeSignal[] = JSON.parse(clean);
 
-    signals.forEach((s) => {
-      results.push({
+    for (const s of signals) {
+      const scannedAt = new Date().toISOString();
+      const scanResult: ScanResult = {
         ...s,
         raw_data: tickers.find((t) => t.ticker === s.ticker),
-        scanned_at: new Date().toISOString(),
-      });
-    });
+        scanned_at: scannedAt,
+      };
+      results.push(scanResult);
+
+      const exists = await signalExistsRecently(s.ticker, s.signal_type);
+      if (!exists) {
+        await saveSignal({
+          ticker: s.ticker,
+          signal_type: s.signal_type,
+          strength: s.strength,
+          summary: s.summary,
+          raw_data: scanResult.raw_data,
+          status: 'pending',
+          scanned_at: scannedAt,
+        });
+      }
+    }
   } catch (e) {
     console.error('Scanner agent error:', e);
   }
