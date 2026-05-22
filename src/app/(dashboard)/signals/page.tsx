@@ -90,6 +90,12 @@ export default function SignalsPage() {
     return () => clearInterval(interval);
   }, [fetchSignals]);
 
+  useEffect(() => {
+    const onPullRefresh = () => fetchSignals();
+    window.addEventListener('dark-recon-refresh', onPullRefresh);
+    return () => window.removeEventListener('dark-recon-refresh', onPullRefresh);
+  }, [fetchSignals]);
+
   const filteredSignals = signals.filter((s) => {
     if (filter !== 'all' && s.strength !== filter) return false;
     if (typeFilter !== 'all' && s.signal_type !== typeFilter) return false;
@@ -100,7 +106,7 @@ export default function SignalsPage() {
   const allTypes = [...new Set(signals.map((s) => s.signal_type))];
 
   return (
-    <div style={{ padding: 24, maxWidth: 1000, margin: '0 auto' }}>
+    <div className="mx-auto max-w-[1000px] px-3.5 py-6 md:p-6">
       <div
         style={{
           display: 'flex',
@@ -159,14 +165,7 @@ export default function SignalsPage() {
         </button>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 10,
-          marginBottom: 20,
-        }}
-      >
+      <div className="mb-5 grid grid-cols-3 gap-2 md:gap-2.5">
         {[
           { label: 'TOTAL SIGNALS', value: signals.length, color: '#3d9aff' },
           { label: 'HIGH CONVICTION', value: highCount, color: '#00ff88' },
@@ -178,13 +177,8 @@ export default function SignalsPage() {
         ].map((card) => (
           <div
             key={card.label}
-            style={{
-              background: '#111620',
-              border: '1px solid #1e2a3a',
-              borderTop: `2px solid ${card.color}`,
-              borderRadius: 10,
-              padding: '14px 16px',
-            }}
+            className="rounded-[10px] border border-border bg-bg-card px-3 py-2.5 md:px-4 md:py-3.5"
+            style={{ borderTop: `2px solid ${card.color}` }}
           >
             <div
               style={{
@@ -211,65 +205,34 @@ export default function SignalsPage() {
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div
-          style={{
-            fontFamily: 'monospace',
-            fontSize: 9,
-            color: '#7a8fa8',
-            letterSpacing: 2,
-            display: 'flex',
-            alignItems: 'center',
-            marginRight: 4,
-          }}
-        >
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible [-webkit-overflow-scrolling:touch]">
+        <div className="mr-1 flex shrink-0 items-center font-mono text-[9px] tracking-wider text-text-secondary">
           STRENGTH:
         </div>
         {(['all', 'high', 'medium', 'low'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
+            className="shrink-0 cursor-pointer rounded-full border px-3 py-1 font-mono text-[9px] tracking-wide"
             style={{
-              padding: '4px 12px',
-              borderRadius: 20,
-              border: `1px solid ${filter === f ? '#00ff88' : '#1e2a3a'}`,
+              borderColor: filter === f ? '#00ff8840' : '#1e2a3a',
               background: filter === f ? '#00ff8815' : '#111620',
               color: filter === f ? '#00ff88' : '#7a8fa8',
-              fontFamily: 'monospace',
-              fontSize: 9,
-              letterSpacing: 1,
-              cursor: 'pointer',
             }}
           >
             {f.toUpperCase()}
           </button>
         ))}
-        <div
-          style={{
-            fontFamily: 'monospace',
-            fontSize: 9,
-            color: '#7a8fa8',
-            letterSpacing: 2,
-            display: 'flex',
-            alignItems: 'center',
-            marginLeft: 8,
-            marginRight: 4,
-          }}
-        >
+        <div className="ml-2 mr-1 flex shrink-0 items-center font-mono text-[9px] tracking-wider text-text-secondary">
           TYPE:
         </div>
         <button
           onClick={() => setTypeFilter('all')}
+          className="shrink-0 cursor-pointer rounded-full border px-3 py-1 font-mono text-[9px] tracking-wide"
           style={{
-            padding: '4px 12px',
-            borderRadius: 20,
-            border: `1px solid ${typeFilter === 'all' ? '#3d9aff' : '#1e2a3a'}`,
+            borderColor: typeFilter === 'all' ? '#3d9aff40' : '#1e2a3a',
             background: typeFilter === 'all' ? '#3d9aff15' : '#111620',
             color: typeFilter === 'all' ? '#3d9aff' : '#7a8fa8',
-            fontFamily: 'monospace',
-            fontSize: 9,
-            letterSpacing: 1,
-            cursor: 'pointer',
           }}
         >
           ALL
@@ -278,16 +241,11 @@ export default function SignalsPage() {
           <button
             key={t}
             onClick={() => setTypeFilter(t)}
+            className="shrink-0 cursor-pointer rounded-full border px-3 py-1 font-mono text-[9px] tracking-wide"
             style={{
-              padding: '4px 12px',
-              borderRadius: 20,
-              border: `1px solid ${typeFilter === t ? '#3d9aff' : '#1e2a3a'}`,
+              borderColor: typeFilter === t ? '#3d9aff40' : '#1e2a3a',
               background: typeFilter === t ? '#3d9aff15' : '#111620',
               color: typeFilter === t ? '#3d9aff' : '#7a8fa8',
-              fontFamily: 'monospace',
-              fontSize: 9,
-              letterSpacing: 1,
-              cursor: 'pointer',
             }}
           >
             {(SIGNAL_TYPE_LABELS[t] || t).toUpperCase()}
@@ -338,58 +296,37 @@ export default function SignalsPage() {
               >
                 <div
                   onClick={() => setExpandedId(isExpanded ? null : signal.id)}
-                  style={{
-                    padding: '14px 16px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                  }}
+                  className="flex cursor-pointer items-center justify-between gap-2 px-3.5 py-3.5 md:px-4 md:py-3.5"
                 >
-                  <span
-                    style={{
-                      fontFamily: 'monospace',
-                      fontSize: 15,
-                      fontWeight: 700,
-                      color: '#ffd700',
-                      minWidth: 60,
-                    }}
-                  >
-                    {signal.ticker}
-                  </span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#7a8fa8', flex: 1 }}>
-                    {(SIGNAL_TYPE_LABELS[signal.signal_type] || signal.signal_type).toUpperCase()}
-                  </span>
-                  <span
-                    style={{
-                      background: sc.bg,
-                      color: sc.text,
-                      border: `1px solid ${sc.border}`,
-                      padding: '2px 10px',
-                      borderRadius: 20,
-                      fontFamily: 'monospace',
-                      fontSize: 9,
-                      letterSpacing: 2,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {signal.strength.toUpperCase()}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: 'monospace',
-                      fontSize: 9,
-                      color: STATUS_COLORS[signal.status] || '#7a8fa8',
-                      letterSpacing: 1,
-                    }}
-                  >
-                    {signal.status?.toUpperCase()}
-                  </span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068' }}>
-                    {new Date(signal.created_at).toLocaleTimeString()}
-                  </span>
-                  <span style={{ color: '#3d5068', fontSize: 12 }}>{isExpanded ? '▲' : '▼'}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="font-mono text-base font-bold text-accent-yellow md:text-[15px]">
+                        {signal.ticker}
+                      </span>
+                      <span className="font-mono text-[9px] text-text-secondary">
+                        {(SIGNAL_TYPE_LABELS[signal.signal_type] || signal.signal_type).toUpperCase()}
+                      </span>
+                    </div>
+                    <span
+                      className="mt-1 hidden font-mono text-[9px] md:inline"
+                      style={{ color: STATUS_COLORS[signal.status] || '#7a8fa8' }}
+                    >
+                      {signal.status?.toUpperCase()} · {new Date(signal.created_at).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span
+                      className="rounded-full border px-2.5 py-0.5 font-mono text-[9px] font-bold tracking-wider"
+                      style={{
+                        background: sc.bg,
+                        color: sc.text,
+                        borderColor: sc.border,
+                      }}
+                    >
+                      {signal.strength.toUpperCase()}
+                    </span>
+                    <span className="text-xs text-text-muted md:hidden">{isExpanded ? '▲' : '▼'}</span>
+                  </div>
                 </div>
                 {isExpanded && (
                   <div style={{ padding: '0 16px 16px', borderTop: '1px solid #1e2a3a' }}>
@@ -404,7 +341,7 @@ export default function SignalsPage() {
                     >
                       {signal.summary}
                     </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:gap-2">
                       <button
                         onClick={() => updateStatus(signal.id, 'confirmed')}
                         style={{

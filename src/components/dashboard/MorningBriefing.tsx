@@ -73,7 +73,7 @@ export default function MorningBriefing({
                 </Badge>
                 <Badge variant="blue">{briefing.market_status}</Badge>
               </div>
-              <div className="whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">
+              <div className="whitespace-pre-wrap text-[13px] leading-[1.7] text-text-secondary md:text-sm md:leading-relaxed">
                 {briefing.briefing_text}
               </div>
               {briefing.key_levels.length > 0 && (

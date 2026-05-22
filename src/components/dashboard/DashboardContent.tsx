@@ -85,6 +85,15 @@ export default function DashboardContent() {
     return () => clearInterval(interval);
   }, [fetchBriefing, fetchScan]);
 
+  useEffect(() => {
+    const onPullRefresh = () => {
+      fetchBriefing();
+      fetchScan();
+    };
+    window.addEventListener('dark-recon-refresh', onPullRefresh);
+    return () => window.removeEventListener('dark-recon-refresh', onPullRefresh);
+  }, [fetchBriefing, fetchScan]);
+
   const highConviction = signals.filter((s) => s.strength === 'high').length;
   const alertsToday = signals.filter((s) => {
     const scanned = new Date(s.scanned_at);
@@ -129,7 +138,7 @@ export default function DashboardContent() {
         onRetry={fetchBriefing}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <SignalCard label="Active Signals" value={signals.length} accent="green" />
         <SignalCard label="High Conviction" value={highConviction} accent="yellow" />
         <SignalCard label="Alerts Today" value={alertsToday} accent="blue" />
@@ -159,8 +168,8 @@ export default function DashboardContent() {
                 <th className="pb-3 pr-4 font-medium">Ticker</th>
                 <th className="pb-3 pr-4 font-medium">Type</th>
                 <th className="pb-3 pr-4 font-medium">Signal Strength</th>
-                <th className="pb-3 pr-4 font-medium">Agent</th>
-                <th className="pb-3 font-medium">Time</th>
+                <th className="hidden pb-3 pr-4 font-medium md:table-cell">Agent</th>
+                <th className="hidden pb-3 font-medium md:table-cell">Time</th>
               </tr>
             </thead>
             <tbody>
@@ -203,8 +212,10 @@ export default function DashboardContent() {
                     <td className="py-3 pr-4">
                       <Badge variant={strengthVariant(signal.strength)}>{signal.strength}</Badge>
                     </td>
-                    <td className="py-3 pr-4 text-text-secondary">Market Scanner</td>
-                    <td className="py-3 font-mono text-xs text-text-muted">
+                    <td className="hidden py-3 pr-4 text-text-secondary md:table-cell">
+                      Market Scanner
+                    </td>
+                    <td className="hidden py-3 font-mono text-xs text-text-muted md:table-cell">
                       {new Date(signal.scanned_at).toLocaleTimeString()}
                     </td>
                   </tr>
@@ -228,7 +239,7 @@ export default function DashboardContent() {
 
       <div>
         <h2 className="mb-4 font-heading text-lg font-semibold text-text-primary">Agent Status</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           {agents.map((agent) => (
             <AgentStatus key={agent.id} agent={agent} />
           ))}

@@ -82,7 +82,10 @@ function DirectionPill({ direction }: { direction: string }) {
 
 function SectionCard({ label, borderColor, children }: { label: string; borderColor: string; children: ReactNode }) {
   return (
-    <div style={{ background: '#111620', border: '1px solid #1e2a3a', borderLeft: `3px solid ${borderColor}`, borderRadius: 10, padding: '20px 24px', marginBottom: 12 }}>
+    <div
+      className="mb-3 rounded-[10px] border border-border bg-bg-card p-3.5 md:p-6"
+      style={{ borderLeft: `3px solid ${borderColor}` }}
+    >
       <div style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: borderColor, textTransform: 'uppercase', marginBottom: 14 }}>{label}</div>
       {children}
     </div>
@@ -155,11 +158,21 @@ export default function ThesisPage() {
     }
   };
 
+  useEffect(() => {
+    const onPullRefresh = () => {
+      fetch('/api/thesis')
+        .then((r) => r.json())
+        .then((d) => setSavedTheses(d.theses || []))
+        .catch(() => {});
+    };
+    window.addEventListener('dark-recon-refresh', onPullRefresh);
+    return () => window.removeEventListener('dark-recon-refresh', onPullRefresh);
+  }, []);
+
   return (
-    <div style={{ padding: '24px', maxWidth: 900, margin: '0 auto' }}>
-      
+    <div className="mx-auto max-w-[900px] px-3.5 py-6 md:p-6">
       {/* Input Card */}
-      <div style={{ background: '#111620', border: '1px solid #1e2a3a', borderRadius: 12, padding: '24px', marginBottom: 24 }}>
+      <div className="mb-6 rounded-xl border border-border bg-bg-card p-3.5 md:p-6">
         <div style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: '#00ff88', textTransform: 'uppercase', marginBottom: 8 }}>Thesis Builder</div>
         <div style={{ fontSize: 13, color: '#7a8fa8', marginBottom: 20 }}>Type any ticker to generate a complete AI investment thesis</div>
         <input
@@ -169,20 +182,7 @@ export default function ThesisPage() {
           onKeyDown={handleKey}
           placeholder="Enter ticker (e.g. NVDA)"
           disabled={loading}
-          style={{
-            width: '100%',
-            padding: '14px 16px',
-            background: '#0d1117',
-            border: '1px solid #1e2a3a',
-            borderRadius: 8,
-            color: '#e8edf5',
-            fontFamily: 'monospace',
-            fontSize: 18,
-            letterSpacing: 3,
-            outline: 'none',
-            marginBottom: 12,
-            boxSizing: 'border-box',
-          }}
+          className="mb-3 w-full rounded-lg border border-border bg-bg-secondary px-4 py-3.5 font-mono text-base tracking-widest text-text-primary outline-none md:text-lg"
         />
         <button
           onClick={buildThesis}
@@ -267,7 +267,7 @@ export default function ThesisPage() {
           {/* Options Setup */}
           <SectionCard label="Recommended Play" borderColor="#3d9aff">
             <div style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 700, color: '#3d9aff', marginBottom: 16 }}>{thesis.options_setup.recommended_play}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+            <div className="mb-3.5 grid grid-cols-2 gap-2.5 md:gap-2.5">
               {[
                 { label: 'STRIKE', value: thesis.options_setup.strike },
                 { label: 'EXPIRATION', value: thesis.options_setup.expiration },
@@ -299,7 +299,7 @@ export default function ThesisPage() {
 
           {/* Technical Levels */}
           <SectionCard label="Technical Levels" borderColor="#7a8fa8">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
               {[
                 { label: 'SUPPORT', value: thesis.technical_levels.support, color: '#00ff88' },
                 { label: 'RESISTANCE', value: thesis.technical_levels.resistance, color: '#ff3d5a' },
@@ -320,11 +320,11 @@ export default function ThesisPage() {
           </SectionCard>
 
           {/* Action Row */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 32 }}>
-            <button onClick={buildThesis} style={{ flex: 1, padding: 14, background: '#111620', border: '1px solid #1e2a3a', borderRadius: 8, color: '#7a8fa8', fontFamily: 'monospace', fontSize: 10, letterSpacing: 2, cursor: 'pointer' }}>
+          <div className="mb-8 flex flex-col gap-3 md:flex-row md:gap-3">
+            <button onClick={buildThesis} className="w-full rounded-lg border border-border bg-bg-card px-3.5 py-3.5 font-mono text-[10px] tracking-wider text-text-secondary md:flex-1">
               REGENERATE
             </button>
-            <button onClick={saveToJournal} style={{ flex: 1, padding: 14, background: '#00ff8815', border: '1px solid #00ff8840', borderRadius: 8, color: '#00ff88', fontFamily: 'monospace', fontSize: 10, letterSpacing: 2, cursor: 'pointer' }}>
+            <button onClick={saveToJournal} className="w-full rounded-lg border border-accent-green/40 bg-accent-green-dim px-3.5 py-3.5 font-mono text-[10px] tracking-wider text-accent-green md:flex-1">
               SAVE TO JOURNAL
             </button>
           </div>
@@ -335,7 +335,7 @@ export default function ThesisPage() {
       {savedTheses.length > 0 && (
         <div>
           <div style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: '#7a8fa8', textTransform: 'uppercase', marginBottom: 12 }}>Saved Theses</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
+          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]">
             {savedTheses.map(s => (
               <div key={s.id} onClick={() => loadSaved(s)} style={{ background: '#111620', border: '1px solid #1e2a3a', borderRadius: 10, padding: 14, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>

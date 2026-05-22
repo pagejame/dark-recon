@@ -51,10 +51,30 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {
   color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: inherit;
+  }
+}
+
+.mobile-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 body {

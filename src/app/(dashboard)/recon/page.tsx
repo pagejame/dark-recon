@@ -99,11 +99,17 @@ export default function ReconFeedPage() {
     fetchWatchlist();
   }, []);
 
+  useEffect(() => {
+    const onPullRefresh = () => fetchWatchlist();
+    window.addEventListener('dark-recon-refresh', onPullRefresh);
+    return () => window.removeEventListener('dark-recon-refresh', onPullRefresh);
+  }, []);
+
   const directionColor = (d: string) =>
     d === 'bullish' ? '#00ff88' : d === 'bearish' ? '#ff3d5a' : '#ffd700';
 
   return (
-    <div style={{ padding: 24, maxWidth: 1000, margin: '0 auto' }}>
+    <div className="mx-auto max-w-[1000px] px-3.5 py-6 md:p-6">
       <div style={{ marginBottom: 24 }}>
         <div
           style={{
@@ -132,17 +138,7 @@ export default function ReconFeedPage() {
         </div>
       </div>
 
-      <div
-        style={{
-          background: '#111620',
-          border: '1px solid #1e2a3a',
-          borderRadius: 10,
-          padding: '16px 20px',
-          marginBottom: 20,
-          display: 'flex',
-          gap: 10,
-        }}
-      >
+      <div className="mb-5 flex flex-col gap-2.5 rounded-[10px] border border-border bg-bg-card p-3.5 md:flex-row md:gap-2.5 md:p-5">
         <input
           type="text"
           value={newTicker}
@@ -150,33 +146,15 @@ export default function ReconFeedPage() {
           onKeyDown={(e) => e.key === 'Enter' && addTicker()}
           placeholder="Add ticker to watchlist..."
           maxLength={5}
-          style={{
-            flex: 1,
-            padding: '10px 14px',
-            background: '#0d1117',
-            border: '1px solid #1e2a3a',
-            borderRadius: 8,
-            color: '#e8edf5',
-            fontFamily: 'monospace',
-            fontSize: 14,
-            letterSpacing: 2,
-            outline: 'none',
-          }}
+          className="w-full rounded-lg border border-border bg-bg-secondary px-3.5 py-2.5 font-mono text-base tracking-wide text-text-primary outline-none md:flex-1 md:text-sm"
         />
         <button
           onClick={addTicker}
           disabled={adding || !newTicker.trim()}
+          className="w-full rounded-lg border-none px-5 py-2.5 font-mono text-[10px] font-bold tracking-wider disabled:cursor-not-allowed md:w-auto"
           style={{
-            padding: '10px 20px',
             background: adding || !newTicker.trim() ? '#1e2a3a' : '#00ff88',
             color: adding || !newTicker.trim() ? '#7a8fa8' : '#080a0f',
-            border: 'none',
-            borderRadius: 8,
-            fontFamily: 'monospace',
-            fontSize: 10,
-            letterSpacing: 2,
-            fontWeight: 700,
-            cursor: 'pointer',
           }}
         >
           {adding ? 'ADDING...' : '+ ADD'}
@@ -227,24 +205,8 @@ export default function ReconFeedPage() {
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  style={{
-                    padding: '14px 16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: 'monospace',
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: '#ffd700',
-                      minWidth: 70,
-                    }}
-                  >
+                <div className="flex flex-wrap items-center gap-2 px-3.5 py-3.5 md:gap-3 md:px-4 md:py-3.5">
+                  <span className="min-w-[70px] font-mono text-lg font-bold text-accent-yellow md:text-base">
                     {item.ticker}
                   </span>
                   {hasThesis && (
@@ -270,7 +232,8 @@ export default function ReconFeedPage() {
                       </span>
                     </>
                   )}
-                  <div style={{ flex: 1 }} />
+                  <div className="hidden flex-1 md:block" />
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
                   <button
                     onClick={() => analyzeTicke(item.ticker)}
                     disabled={isLoading}
@@ -303,6 +266,7 @@ export default function ReconFeedPage() {
                   >
                     ✕
                   </button>
+                  </div>
                 </div>
 
                 {hasError && (
@@ -320,39 +284,15 @@ export default function ReconFeedPage() {
                 )}
 
                 {hasThesis && (
-                  <div style={{ padding: '0 16px 16px', borderTop: '1px solid #1e2a3a' }}>
-                    <div
-                      style={{
-                        marginTop: 14,
-                        fontSize: 13,
-                        color: '#7a8fa8',
-                        lineHeight: 1.7,
-                        marginBottom: 12,
-                      }}
-                    >
+                  <div className="border-t border-border px-3.5 pb-4 md:px-4 md:pb-4">
+                    <div className="mt-3.5 mb-3 text-[13px] leading-[1.7] text-text-secondary">
                       <strong style={{ color: '#00ff88' }}>Bull:</strong> {hasThesis.bull_case.summary}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: '#7a8fa8',
-                        lineHeight: 1.7,
-                        marginBottom: 12,
-                      }}
-                    >
+                    <div className="mb-3 text-[13px] leading-[1.7] text-text-secondary">
                       <strong style={{ color: '#ff3d5a' }}>Bear:</strong> {hasThesis.bear_case.summary}
                     </div>
                     <div
-                      style={{
-                        background: '#0d1117',
-                        border: '1px solid #1e2a3a',
-                        borderLeft: '3px solid #ffd700',
-                        borderRadius: 8,
-                        padding: 12,
-                        fontSize: 13,
-                        color: '#e8edf5',
-                        lineHeight: 1.6,
-                      }}
+                      className="rounded-lg border border-border border-l-[3px] border-l-accent-yellow bg-bg-secondary p-2.5 text-[13px] leading-relaxed text-text-primary md:p-3"
                     >
                       {hasThesis.dark_recon_verdict}
                     </div>

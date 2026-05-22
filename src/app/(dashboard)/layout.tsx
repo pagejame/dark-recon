@@ -1,6 +1,7 @@
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
 import MobileNav from '@/components/layout/MobileNav';
+import PullToRefresh from '@/components/layout/PullToRefresh';
 
 export default function DashboardLayout({
   children,
@@ -10,9 +11,11 @@ export default function DashboardLayout({
   return (
     <div className="flex min-h-screen bg-bg-primary">
       <Sidebar />
-      <div className="flex flex-1 flex-col pb-16 md:pb-0">
+      <div className="flex flex-1 flex-col pb-20 md:pb-0">
         <TopBar />
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <PullToRefresh>
+          <main className="flex-1 overflow-auto p-3.5 md:p-6">{children}</main>
+        </PullToRefresh>
       </div>
       <MobileNav />
     </div>
