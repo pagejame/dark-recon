@@ -1,12 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { generateMorningBriefing } from '@/lib/agents/briefing';
 import { getTodaysBriefing, saveBriefing } from '@/lib/db/briefings';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const cached = await getTodaysBriefing();
-    if (cached) {
-      return NextResponse.json({ ...cached, cache: 'HIT' });
+    const refresh = request.nextUrl.searchParams.get('refresh') === 'true';
+
+    if (!refresh) {
+      const cached = await getTodaysBriefing();
+      if (cached) {
+        return NextResponse.json({ ...cached, cache: 'HIT' });
+      }
     }
 
     const briefing = await generateMorningBriefing();
