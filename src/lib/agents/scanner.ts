@@ -1,4 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
+import {
+  getEarningsCalendar,
+  formatEarningsContext,
+  type EarningsCalendarEvent,
+} from '@/lib/api/finnhub';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -21,6 +26,19 @@ export async function runMarketScan(tickers?: string[]): Promise<ScanResult[]> {
   const today = new Date().toDateString();
   const time = new Date().toLocaleTimeString();
 
+  let earningsContext = '';
+  try {
+    const earnings = (await getEarningsCalendar(3)) as EarningsCalendarEvent[];
+    const relevant = earnings.filter((e) => watchlist.includes(e.symbol));
+    earningsContext = formatEarningsContext(relevant);
+  } catch {
+    // continue without earnings context
+  }
+
+  const earningsBlock = earningsContext
+    ? `\nUpcoming earnings this week (weight these higher for pre-earnings options setups):\n${earningsContext}\n`
+    : '';
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1500,
@@ -28,7 +46,7 @@ export async function runMarketScan(tickers?: string[]): Promise<ScanResult[]> {
       {
         role: 'user',
         content: `You are Dark Recon's Market Scanner Agent. Today is ${today} at ${time}.
-
+${earningsBlock}
 Analyze these tickers and identify the 3 most interesting signals based on your knowledge of current market conditions: ${watchlist.join(', ')}
 
 Respond with a single JSON array only. No text before or after. No markdown. No code fences. Just the raw JSON array starting with [ and ending with ].
@@ -55,7 +73,7 @@ Use this exact structure:
   }
 ]
 
-Signal types: unusual_volume, momentum_breakout, unusual_options, reversal_candidate, sector_leader, insider_activity, squeeze_candidate
+Signal types: unusual_volume, momentum_breakout, unusual_options, reversal_candidate, sector_leader, insider_activity, squeeze_candidate, earnings_catalyst
 Strength values: high, medium, low
 
 Base your analysis on your training knowledge of these companies and current macro conditions. Be specific and actionable.`,

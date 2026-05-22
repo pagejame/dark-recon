@@ -24,6 +24,14 @@ const BASE_AGENTS: Agent[] = [
 
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
 
+const EARNINGS_WATCHLIST = ['NVDA', 'AMD', 'TSLA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL'];
+
+interface EarningsEvent {
+  symbol: string;
+  date: string;
+  hour?: string;
+}
+
 interface AlpacaAccount {
   equity: string;
   cash: string;
@@ -49,6 +57,8 @@ export default function DashboardContent() {
   const [scanUpdatedAt, setScanUpdatedAt] = useState<string | null>(null);
   const [account, setAccount] = useState<AlpacaAccount | null>(null);
   const [accountLoading, setAccountLoading] = useState(true);
+  const [earnings, setEarnings] = useState<EarningsEvent[]>([]);
+  const [earningsLoading, setEarningsLoading] = useState(true);
 
   const fetchBriefing = useCallback(async () => {
     setBriefingLoading(true);
@@ -84,6 +94,22 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const fetchEarnings = useCallback(async () => {
+    setEarningsLoading(true);
+    try {
+      const res = await fetch('/api/earnings?days=7');
+      const data = await res.json();
+      const filtered = (data.earnings || []).filter((e: EarningsEvent) =>
+        EARNINGS_WATCHLIST.includes(e.symbol)
+      );
+      setEarnings(filtered);
+    } catch {
+      setEarnings([]);
+    } finally {
+      setEarningsLoading(false);
+    }
+  }, []);
+
   const fetchScan = useCallback(async () => {
     setScanLoading(true);
     setScanError(null);
@@ -110,20 +136,22 @@ export default function DashboardContent() {
     fetchBriefing();
     fetchScan();
     fetchAccount();
+    fetchEarnings();
 
     const interval = setInterval(fetchScan, SCAN_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [fetchBriefing, fetchScan, fetchAccount]);
+  }, [fetchBriefing, fetchScan, fetchAccount, fetchEarnings]);
 
   useEffect(() => {
     const onPullRefresh = () => {
       fetchBriefing();
       fetchScan();
       fetchAccount();
+      fetchEarnings();
     };
     window.addEventListener('dark-recon-refresh', onPullRefresh);
     return () => window.removeEventListener('dark-recon-refresh', onPullRefresh);
-  }, [fetchBriefing, fetchScan, fetchAccount]);
+  }, [fetchBriefing, fetchScan, fetchAccount, fetchEarnings]);
 
   const highConviction = signals.filter((s) => s.strength === 'high').length;
   const alertsToday = signals.filter((s) => {
@@ -158,6 +186,26 @@ export default function DashboardContent() {
 
   const dayPnl = account ? parseFloat(account.equity) - parseFloat(account.last_equity) : 0;
 
+  const todayStr = new Date().toISOString().split('T')[0];
+  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
+  const formatEarningsDate = (dateStr: string) => {
+    const d = new Date(`${dateStr}T00:00:00`);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const earningsTiming = (hour?: string) => {
+    if (hour === 'bmo') return 'PRE';
+    if (hour === 'amc') return 'POST';
+    return 'TBD';
+  };
+
+  const earningsBorderColor = (dateStr: string) => {
+    if (dateStr === todayStr) return '#00ff88';
+    if (dateStr === tomorrowStr) return '#ffd700';
+    return '#1e2a3a';
+  };
+
   return (
     <div className="space-y-6">
       <MorningBriefing
@@ -170,6 +218,38 @@ export default function DashboardContent() {
         error={briefingError}
         onRetry={fetchBriefing}
       />
+
+      <Link href="/earnings" className="block">
+        <Card className="border-l-2 border-l-accent-yellow">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="font-mono text-[8px] uppercase tracking-[3px] text-text-muted">
+              THIS WEEK&apos;S CATALYSTS
+            </div>
+            <span className="font-mono text-[9px] text-accent-green">View calendar →</span>
+          </div>
+          {earningsLoading ? (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-8 w-28 shrink-0 animate-pulse rounded-full bg-bg-elevated" />
+              ))}
+            </div>
+          ) : earnings.length === 0 ? (
+            <p className="text-sm text-text-secondary">No watchlist earnings this week</p>
+          ) : (
+            <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
+              {earnings.map((event) => (
+                <span
+                  key={`${event.symbol}-${event.date}`}
+                  className="shrink-0 rounded-full border px-3 py-1.5 font-mono text-[9px] tracking-wide text-text-primary"
+                  style={{ borderColor: earningsBorderColor(event.date) }}
+                >
+                  {event.symbol} · {formatEarningsDate(event.date)} · {earningsTiming(event.hour)}
+                </span>
+              ))}
+            </div>
+          )}
+        </Card>
+      </Link>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <SignalCard label="Active Signals" value={signals.length} accent="green" />
