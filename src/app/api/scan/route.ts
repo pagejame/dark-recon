@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runMarketScan, type ScanResult } from '@/lib/agents/scanner';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 const DEFAULT_WATCHLIST = [
   'SPY', 'QQQ', 'NVDA', 'AMD', 'TSLA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL'
@@ -31,8 +32,7 @@ export async function GET(request: NextRequest) {
     // Try to get watchlist from DB, fall back to default
     let watchlist = DEFAULT_WATCHLIST;
     try {
-      const { createClient } = await import('@/lib/supabase/server');
-      const supabase = await createClient();
+      const supabase = createAdminClient();
       const { data } = await supabase.from('watchlist').select('ticker');
       if (data && data.length > 0) {
         watchlist = data.map((w: { ticker: string }) => w.ticker);
@@ -46,9 +46,8 @@ export async function GET(request: NextRequest) {
 
     // Try to persist signals to DB — non-fatal
     try {
-      const { createClient } = await import('@/lib/supabase/server');
-      const supabase = await createClient();
-      
+      const supabase = createAdminClient();
+
       for (const signal of signals) {
         // Check for duplicate in last hour
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -78,8 +77,7 @@ export async function GET(request: NextRequest) {
     // Try to get all signals from DB for full history
     let allSignals: CachedSignal[] = signals;
     try {
-      const { createClient } = await import('@/lib/supabase/server');
-      const supabase = await createClient();
+      const supabase = createAdminClient();
       const { data } = await supabase
         .from('signals')
         .select('*')

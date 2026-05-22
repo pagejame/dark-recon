@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function PATCH(
   request: NextRequest,
@@ -8,7 +8,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { error } = await supabase
       .from('price_alerts')
       .update({ ...body, updated_at: new Date().toISOString() })
@@ -26,7 +26,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     await supabase.from('price_alerts').delete().eq('id', id);
     return NextResponse.json({ success: true });
   } catch {

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/client';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export interface PriceAlert {
   id: string;
@@ -13,7 +13,7 @@ export interface PriceAlert {
 }
 
 export async function getActiveAlerts(): Promise<PriceAlert[]> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('price_alerts')
     .select('*')
@@ -24,7 +24,7 @@ export async function getActiveAlerts(): Promise<PriceAlert[]> {
 }
 
 export async function getAllAlerts(): Promise<PriceAlert[]> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('price_alerts')
     .select('*')
@@ -40,7 +40,7 @@ export async function createAlert(alert: {
   target_price: number;
   note?: string;
 }): Promise<PriceAlert | null> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('price_alerts')
     .insert({
@@ -56,7 +56,7 @@ export async function createAlert(alert: {
 }
 
 export async function triggerAlert(id: string, currentPrice: number): Promise<void> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   await supabase
     .from('price_alerts')
     .update({
@@ -69,7 +69,7 @@ export async function triggerAlert(id: string, currentPrice: number): Promise<vo
 }
 
 export async function dismissAlert(id: string): Promise<void> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   await supabase
     .from('price_alerts')
     .update({ status: 'dismissed', updated_at: new Date().toISOString() })
@@ -77,12 +77,12 @@ export async function dismissAlert(id: string): Promise<void> {
 }
 
 export async function deleteAlert(id: string): Promise<void> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   await supabase.from('price_alerts').delete().eq('id', id);
 }
 
 export async function updateAlertPrice(id: string, currentPrice: number): Promise<void> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   await supabase
     .from('price_alerts')
     .update({ current_price: currentPrice, updated_at: new Date().toISOString() })

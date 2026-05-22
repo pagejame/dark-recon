@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { checkPriceAlerts } from '@/lib/agents/price-alerts';
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const result = await checkPriceAlerts(supabase);
     return NextResponse.json(result);
   } catch (error) {

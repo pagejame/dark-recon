@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 const DEFAULT_SETTINGS = {
   watchlist: ['SPY', 'QQQ', 'NVDA', 'AMD', 'TSLA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL'],
@@ -11,7 +11,7 @@ const DEFAULT_SETTINGS = {
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase.from('settings').select('key, value');
 
     if (error) throw error;
@@ -37,7 +37,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'key and value required' }, { status: 400 });
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { error } = await supabase
       .from('settings')
       .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });

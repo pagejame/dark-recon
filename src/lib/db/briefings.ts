@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/client';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export type BriefingInsert = {
   date: string;
@@ -16,7 +16,7 @@ export type DbBriefing = BriefingInsert & {
 };
 
 export async function saveBriefing(briefing: BriefingInsert) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('briefings')
     .insert(briefing)
@@ -27,7 +27,7 @@ export async function saveBriefing(briefing: BriefingInsert) {
 }
 
 export async function getTodaysBriefing() {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const today = new Date().toDateString();
   const { data, error } = await supabase
     .from('briefings')
@@ -41,7 +41,7 @@ export async function getTodaysBriefing() {
 }
 
 export async function getBriefingHistory(limit = 7) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('briefings')
     .select('*')

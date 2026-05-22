@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/client';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export type SignalInsert = {
   ticker: string;
@@ -17,7 +17,7 @@ export type DbSignal = SignalInsert & {
 };
 
 export async function signalExistsRecently(ticker: string, signalType: string): Promise<boolean> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from('signals')
@@ -31,7 +31,7 @@ export async function signalExistsRecently(ticker: string, signalType: string): 
 }
 
 export async function saveSignal(signal: SignalInsert) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('signals')
     .insert(signal)
@@ -42,7 +42,7 @@ export async function saveSignal(signal: SignalInsert) {
 }
 
 export async function getRecentSignals(limit = 20) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('signals')
     .select('*')
@@ -53,7 +53,7 @@ export async function getRecentSignals(limit = 20) {
 }
 
 export async function getHighConvictionSignals() {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('signals')
     .select('*')
@@ -69,13 +69,13 @@ export async function updateSignalStatus(
   id: string,
   status: 'pending' | 'confirmed' | 'passed' | 'executed'
 ) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { error } = await supabase.from('signals').update({ status }).eq('id', id);
   if (error) console.error('Update signal status error:', error);
 }
 
 export async function getSignalsByTicker(ticker: string) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('signals')
     .select('*')

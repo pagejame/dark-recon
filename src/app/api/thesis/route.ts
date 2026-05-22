@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildThesis } from '@/lib/agents/thesis';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(request: NextRequest) {
   let upperTicker = '';
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const thesis = await buildThesis(upperTicker);
 
     try {
-      const supabase = await createClient();
+      const supabase = createAdminClient();
       await supabase.from('theses').insert({
         ticker: thesis.ticker,
         company_name: thesis.company_name,
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data } = await supabase
       .from('theses')
       .select('*')

@@ -1,48 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from('price_alerts')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(50);
-    if (error) throw error;
+    if (error) {
+      console.error('Alerts GET error:', error);
+      throw error;
+    }
     return NextResponse.json({ alerts: data || [] });
-  } catch {
-    return NextResponse.json({ alerts: [], error: 'Failed to load alerts' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load alerts';
+    return NextResponse.json({ alerts: [], error: message });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { ticker, condition, target_price, note } = await request.json();
-    if (!ticker || !condition || !target_price) {
+    const body = await request.json();
+    const { ticker, condition, target_price, note } = body;
+
+    if (!ticker || !condition || target_price === undefined || target_price === null) {
       return NextResponse.json(
         { error: 'ticker, condition, target_price required' },
         { status: 400 }
       );
     }
-    const supabase = await createClient();
+
+    const price = parseFloat(target_price);
+    if (isNaN(price) || price <= 0) {
+      return NextResponse.json({ error: 'Invalid target price' }, { status: 400 });
+    }
+
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from('price_alerts')
       .insert({
-        ticker: ticker.toUpperCase(),
+        ticker: ticker.toUpperCase().trim(),
         condition,
-        target_price: parseFloat(target_price),
-        note,
+        target_price: price,
+        note: note || null,
+        status: 'active',
       })
       .select()
       .single();
+
     if (error) {
-      console.error('Create alert error:', error);
+      console.error('Alerts POST error:', error);
       throw error;
     }
+
     return NextResponse.json(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create alert';
+    console.error('Alerts POST catch:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/client';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export type DbPosition = {
   id: string;
@@ -42,7 +42,7 @@ export async function createPosition(position: {
   strike_price?: number;
   expiration_date?: string;
 }) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('positions')
     .insert(position)
@@ -53,7 +53,7 @@ export async function createPosition(position: {
 }
 
 export async function getOpenPositions() {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('positions')
     .select('*')
@@ -64,7 +64,7 @@ export async function getOpenPositions() {
 }
 
 export async function closePosition(id: string, exitPrice: number) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const position = await supabase.from('positions').select('*').eq('id', id).single();
   if (!position.data) return null;
 
@@ -97,7 +97,7 @@ export async function createJournalEntry(entry: {
   signal_source?: string;
   entry_notes?: string;
 }) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('trade_journal')
     .insert(entry)
@@ -108,7 +108,7 @@ export async function createJournalEntry(entry: {
 }
 
 export async function getJournalEntries(limit = 50) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('trade_journal')
     .select('*, positions(*)')
@@ -127,7 +127,7 @@ export async function updateJournalEntry(
     tags?: string[];
   }
 ) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('trade_journal')
     .update({ ...updates, updated_at: new Date().toISOString() })

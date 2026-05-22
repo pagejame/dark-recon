@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/client';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export type WatchlistItem = {
   id: string;
@@ -8,7 +8,7 @@ export type WatchlistItem = {
 };
 
 export async function getWatchlist() {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('watchlist')
     .select('*')
@@ -18,7 +18,7 @@ export async function getWatchlist() {
 }
 
 export async function addToWatchlist(ticker: string, notes?: string) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('watchlist')
     .insert({ ticker: ticker.toUpperCase(), notes })
@@ -29,7 +29,7 @@ export async function addToWatchlist(ticker: string, notes?: string) {
 }
 
 export async function removeFromWatchlist(ticker: string) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { error } = await supabase
     .from('watchlist')
     .delete()
@@ -38,7 +38,7 @@ export async function removeFromWatchlist(ticker: string) {
 }
 
 export async function updateWatchlistNotes(ticker: string, notes: string) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { error } = await supabase
     .from('watchlist')
     .update({ notes })
