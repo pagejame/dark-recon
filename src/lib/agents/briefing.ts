@@ -68,7 +68,7 @@ export async function generateMorningBriefing(): Promise<MorningBriefing> {
       spyChange > 0.5 ? 'risk_on' : spyChange < -0.5 ? 'risk_off' : 'neutral';
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1000,
       messages: [
         {
