@@ -42,6 +42,7 @@ interface ThesisResult {
   news_sentiment: string;
   dark_recon_verdict: string;
   generated_at: string;
+  data_sources?: string[];
 }
 
 interface SavedThesis {
@@ -266,6 +267,28 @@ export default function ThesisPage() {
                 <ConvictionBar score={thesis.conviction_score} />
               </div>
             </div>
+            {thesis.data_sources && thesis.data_sources.length > 0 && (
+              <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 8, letterSpacing: 2, color: '#3d5068' }}>DATA:</span>
+                {thesis.data_sources.map((source, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      letterSpacing: 1,
+                      color: '#3d9aff',
+                      background: '#3d9aff10',
+                      border: '1px solid #3d9aff30',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                    }}
+                  >
+                    {source}
+                  </span>
+                ))}
+              </div>
+            )}
           </SectionCard>
 
           {/* Bull Case */}

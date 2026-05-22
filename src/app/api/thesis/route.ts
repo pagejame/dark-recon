@@ -3,6 +3,7 @@ import { buildThesis } from '@/lib/agents/thesis';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
+  let upperTicker = '';
   try {
     const body = await request.json();
     const ticker = body?.ticker;
@@ -11,7 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ticker required' }, { status: 400 });
     }
 
-    const upperTicker = ticker.toUpperCase().trim();
+    upperTicker = ticker.toUpperCase().trim();
     if (upperTicker.length > 5 || !/^[A-Z]+$/.test(upperTicker)) {
       return NextResponse.json({ error: 'Invalid ticker' }, { status: 400 });
     }
@@ -36,7 +37,14 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Thesis route error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: message,
+        ticker: upperTicker,
+        timestamp: new Date().toISOString(),
+      },
+      { status: 500 }
+    );
   }
 }
 
