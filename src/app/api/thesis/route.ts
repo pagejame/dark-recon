@@ -4,7 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { ticker } = await request.json();
+    const body = await request.json();
+    const ticker = body?.ticker;
+
     if (!ticker || typeof ticker !== 'string') {
       return NextResponse.json({ error: 'Ticker required' }, { status: 400 });
     }
@@ -27,13 +29,14 @@ export async function POST(request: NextRequest) {
         generated_at: thesis.generated_at,
       });
     } catch (dbError) {
-      console.error('Failed to save thesis:', dbError);
+      console.error('DB save error (non-fatal):', dbError);
     }
 
     return NextResponse.json(thesis);
-  } catch (e) {
-    console.error('Thesis builder error:', e);
-    return NextResponse.json({ error: 'Thesis generation failed' }, { status: 500 });
+  } catch (error) {
+    console.error('Thesis route error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { getTickerSnapshot, getTickerNews, getPreviousClose } from '@/lib/api/polygon';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -46,130 +45,78 @@ export interface ThesisResult {
   generated_at: string;
 }
 
-interface NewsArticle {
-  title?: string;
-  published_utc?: string;
-}
-
-interface SnapshotTicker {
-  ticker?: string;
-  todaysChangePerc?: number;
-  day?: { c?: number; v?: number };
-  prevDay?: { v?: number };
-  last?: { price?: number };
-}
-
 export async function buildThesis(ticker: string): Promise<ThesisResult> {
-  const upperTicker = ticker.toUpperCase();
+  const upperTicker = ticker.toUpperCase().trim();
 
-  const [snapshot, , news] = await Promise.allSettled([
-    getTickerSnapshot(upperTicker),
-    getPreviousClose(upperTicker),
-    getTickerNews(upperTicker, 5),
-  ]);
-
-  const snapshotData = snapshot.status === 'fulfilled' ? snapshot.value : null;
-  const tickerData: SnapshotTicker | null =
-    snapshotData?.ticker || snapshotData?.results || null;
-  const currentPrice = tickerData?.day?.c || tickerData?.last?.price || 0;
-  const changePercent = tickerData?.todaysChangePerc || 0;
-  const volume = tickerData?.day?.v || 0;
-  const prevVolume = tickerData?.prevDay?.v || 1;
-  const volRatio = (volume / prevVolume).toFixed(2);
-
-  const newsData = news.status === 'fulfilled' ? news.value : null;
-  const recentNews =
-    newsData?.results
-      ?.slice(0, 5)
-      ?.map((n: NewsArticle) => {
-        const date = n.published_utc?.split('T')[0] || 'recent';
-        return `${n.title} (${date})`;
-      })
-      ?.join('\n') || 'No recent news found';
-
-  const dataContext = `
-Ticker: ${upperTicker}
-Current Price: $${currentPrice}
-Today's Change: ${changePercent > 0 ? '+' : ''}${changePercent?.toFixed(2)}%
-Volume vs Yesterday: ${volRatio}x
-
-Recent News:
-${recentNews}
-`;
-
-  const response = await anthropic.messages.create({
+  const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1000,
+    max_tokens: 2000,
     messages: [
       {
         role: 'user',
-        content: `You must respond with ONLY a valid JSON object. No markdown, no code blocks, no explanation text before or after. Start your response with { and end with }.
+        content: `Generate a complete investment thesis for the stock ticker ${upperTicker}. 
 
-You are Dark Recon's Thesis Builder Agent — an elite AI analyst. Build a complete investment thesis for ${upperTicker}.
+Respond with a single JSON object only. No text before or after. No markdown. No code fences. Just the raw JSON object starting with { and ending with }.
 
-Market data:
-${dataContext}
-
-Return ONLY a valid JSON object with exactly this structure (no other text, no markdown):
+Use this exact structure:
 {
   "ticker": "${upperTicker}",
-  "company_name": "Full company name",
-  "current_price": ${currentPrice || 0},
-  "conviction_score": 7,
+  "company_name": "NVIDIA Corporation",
+  "current_price": 950,
+  "conviction_score": 8,
   "overall_direction": "bullish",
   "bull_case": {
-    "summary": "One sentence bull thesis",
+    "summary": "One sentence bull thesis here",
     "points": ["Point 1", "Point 2", "Point 3", "Point 4"],
-    "price_target": "$XXX",
-    "timeframe": "X-X months"
+    "price_target": "$1100",
+    "timeframe": "6-12 months"
   },
   "bear_case": {
-    "summary": "One sentence bear thesis",
+    "summary": "One sentence bear thesis here",
     "points": ["Risk 1", "Risk 2", "Risk 3"],
-    "downside_target": "$XXX",
-    "key_risk": "Single biggest risk in one sentence"
+    "downside_target": "$750",
+    "key_risk": "The single biggest risk in one sentence"
   },
   "catalysts": {
     "upcoming": ["Catalyst 1", "Catalyst 2", "Catalyst 3"],
-    "watch_dates": ["Date or event 1", "Date or event 2"]
+    "watch_dates": ["Q2 Earnings - August", "GTC Conference - March"]
   },
   "options_setup": {
-    "recommended_play": "Buy $XXX Call" or "Buy $XXX Put",
-    "strike": "$XXX",
-    "expiration": "XX-XX days out",
-    "rationale": "Why this specific setup",
+    "recommended_play": "Buy $1000 Call",
+    "strike": "$1000",
+    "expiration": "45-60 days out",
+    "rationale": "Why this specific setup makes sense",
     "max_loss": "Premium paid only",
-    "potential_gain": "X-Xx if thesis plays out"
+    "potential_gain": "3-5x if thesis plays out"
   },
   "technical_levels": {
-    "support": "$XXX",
-    "resistance": "$XXX",
-    "trend": "Short description of current trend"
+    "support": "$880",
+    "resistance": "$1000",
+    "trend": "Uptrend with strong momentum"
   },
-  "insider_activity": "Summary of recent insider buying/selling or none detected",
-  "news_sentiment": "bullish or bearish or neutral — one sentence",
-  "dark_recon_verdict": "Two sentence final verdict — direct, confident, actionable",
+  "insider_activity": "No significant insider activity detected recently",
+  "news_sentiment": "Bullish — strong AI demand narrative driving coverage",
+  "dark_recon_verdict": "Two sentence final verdict that is direct and actionable. Tell the reader exactly what to do and why.",
   "generated_at": "${new Date().toISOString()}"
 }`,
       },
     ],
   });
 
-  const text = response.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+  const rawText = message.content
+    .filter((block) => block.type === 'text')
+    .map((block) => (block as { type: 'text'; text: string }).text)
+    .join('');
 
-  let result: ThesisResult;
-  try {
-    const clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-    result = JSON.parse(clean) as ThesisResult;
-  } catch {
-    const firstBrace = text.indexOf('{');
-    const lastBrace = text.lastIndexOf('}');
-    if (firstBrace === -1 || lastBrace === -1) {
-      throw new Error('No JSON object found in Claude response');
-    }
-    const jsonStr = text.slice(firstBrace, lastBrace + 1);
-    result = JSON.parse(jsonStr) as ThesisResult;
+  const start = rawText.indexOf('{');
+  const end = rawText.lastIndexOf('}');
+
+  if (start === -1 || end === -1 || end <= start) {
+    console.error('Raw response:', rawText);
+    throw new Error('Could not find valid JSON in response');
   }
 
+  const jsonStr = rawText.slice(start, end + 1);
+  const result = JSON.parse(jsonStr) as ThesisResult;
   return result;
 }
