@@ -1,54 +1,102 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runMarketScan } from '@/lib/agents/scanner';
-import { saveSignal, getRecentSignals } from '@/lib/db/signals';
-import { getWatchlist } from '@/lib/db/watchlist';
-import type { DbSignal } from '@/lib/db/signals';
+import { runMarketScan, type ScanResult } from '@/lib/agents/scanner';
+
+const DEFAULT_WATCHLIST = [
+  'SPY', 'QQQ', 'NVDA', 'AMD', 'TSLA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL'
+];
+
+type CachedSignal = ScanResult & {
+  id?: string;
+  status?: string;
+  created_at?: string;
+};
+
+// In-memory cache (resets on cold start but works for serverless)
+let signalCache: { signals: CachedSignal[]; timestamp: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export async function GET(request: NextRequest) {
   try {
-    const forceFresh = new URL(request.url).searchParams.get('fresh') === 'true';
-
-    if (!forceFresh) {
-      const cached = await getRecentSignals(20);
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      const fresh = cached.filter(
-        (s) => new Date(s.scanned_at || s.created_at) > fiveMinutesAgo
-      );
-
-      if (fresh.length > 0) {
-        return NextResponse.json({
-          signals: fresh,
-          scanned_at: new Date().toISOString(),
-          cache: 'HIT',
-        });
-      }
+    const fresh = request.nextUrl.searchParams.get('fresh') === 'true';
+    
+    // Return cache if valid and not forced fresh
+    if (!fresh && signalCache && Date.now() - signalCache.timestamp < CACHE_TTL) {
+      return NextResponse.json({
+        signals: signalCache.signals,
+        scanned_at: new Date(signalCache.timestamp).toISOString(),
+        cache: 'HIT',
+      });
     }
 
-    const watchlist = await getWatchlist();
-    const tickers =
-      watchlist.length > 0 ? watchlist.map((w) => w.ticker) : undefined;
-
-    const signals = await runMarketScan(tickers);
-
-    const persisted: DbSignal[] = [];
-    for (const signal of signals) {
-      try {
-        const saved = await saveSignal({
-          ticker: signal.ticker,
-          signal_type: signal.signal_type,
-          strength: signal.strength,
-          summary: signal.summary,
-          status: 'pending',
-          scanned_at: signal.scanned_at,
-        });
-        if (saved) persisted.push(saved as DbSignal);
-      } catch (e) {
-        console.error('Failed to save signal:', e);
+    // Try to get watchlist from DB, fall back to default
+    let watchlist = DEFAULT_WATCHLIST;
+    try {
+      const { createClient } = await import('@/lib/supabase/server');
+      const supabase = await createClient();
+      const { data } = await supabase.from('watchlist').select('ticker');
+      if (data && data.length > 0) {
+        watchlist = data.map((w: { ticker: string }) => w.ticker);
       }
+    } catch {
+      // Use default watchlist silently
     }
+
+    // Run the scan
+    const signals = await runMarketScan(watchlist);
+
+    // Try to persist signals to DB — non-fatal
+    try {
+      const { createClient } = await import('@/lib/supabase/server');
+      const supabase = await createClient();
+      
+      for (const signal of signals) {
+        // Check for duplicate in last hour
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data: existing } = await supabase
+          .from('signals')
+          .select('id')
+          .eq('ticker', signal.ticker)
+          .eq('signal_type', signal.signal_type)
+          .gte('created_at', oneHourAgo)
+          .limit(1);
+        
+        if (!existing || existing.length === 0) {
+          await supabase.from('signals').insert({
+            ticker: signal.ticker,
+            signal_type: signal.signal_type,
+            strength: signal.strength,
+            summary: signal.summary,
+            status: 'pending',
+            scanned_at: signal.scanned_at,
+          });
+        }
+      }
+    } catch {
+      // DB persist failed — signals still returned to client
+    }
+
+    // Try to get all signals from DB for full history
+    let allSignals: CachedSignal[] = signals;
+    try {
+      const { createClient } = await import('@/lib/supabase/server');
+      const supabase = await createClient();
+      const { data } = await supabase
+        .from('signals')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (data && data.length > 0) {
+        allSignals = data;
+      }
+    } catch {
+      // Use fresh signals only
+    }
+
+    // Update in-memory cache
+    signalCache = { signals: allSignals, timestamp: Date.now() };
 
     return NextResponse.json({
-      signals: persisted.length > 0 ? persisted : await getRecentSignals(20),
+      signals: allSignals,
       scanned_at: new Date().toISOString(),
       cache: 'MISS',
     });
