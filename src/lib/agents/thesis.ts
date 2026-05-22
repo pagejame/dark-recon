@@ -103,7 +103,9 @@ ${recentNews}
     messages: [
       {
         role: 'user',
-        content: `You are Dark Recon's Thesis Builder Agent — an elite AI analyst. Build a complete investment thesis for ${upperTicker}.
+        content: `You must respond with ONLY a valid JSON object. No markdown, no code blocks, no explanation text before or after. Start your response with { and end with }.
+
+You are Dark Recon's Thesis Builder Agent — an elite AI analyst. Build a complete investment thesis for ${upperTicker}.
 
 Market data:
 ${dataContext}
@@ -153,10 +155,21 @@ Return ONLY a valid JSON object with exactly this structure (no other text, no m
     ],
   });
 
-  const text = response.content
-    .map((b) => (b.type === 'text' ? b.text : ''))
-    .join('');
-  const clean = text.replace(/```json|```/g, '').trim();
-  const result = JSON.parse(clean) as ThesisResult;
+  const text = response.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+
+  let result: ThesisResult;
+  try {
+    const clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    result = JSON.parse(clean) as ThesisResult;
+  } catch {
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1) {
+      throw new Error('No JSON object found in Claude response');
+    }
+    const jsonStr = text.slice(firstBrace, lastBrace + 1);
+    result = JSON.parse(jsonStr) as ThesisResult;
+  }
+
   return result;
 }
