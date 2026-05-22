@@ -57,19 +57,21 @@ export default function AlertsPage() {
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
-  const [ticker, setTicker] = useState('');
-  const [condition, setCondition] = useState<'above' | 'below'>('above');
-  const [targetPrice, setTargetPrice] = useState('');
-  const [note, setNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [alertTicker, setAlertTicker] = useState('');
+  const [alertCondition, setAlertCondition] = useState<'above' | 'below'>('above');
+  const [alertPrice, setAlertPrice] = useState('');
+  const [alertNote, setAlertNote] = useState('');
+  const [alertSaving, setAlertSaving] = useState(false);
+  const [alertError, setAlertError] = useState<string | null>(null);
+  const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
 
   const fetchAlerts = useCallback(async () => {
     try {
       const res = await fetch('/api/alerts');
       const data = await res.json();
       setAlerts(data.alerts || []);
-    } catch {
+    } catch (e) {
+      console.error('Fetch alerts error:', e);
       setAlerts([]);
     } finally {
       setLoading(false);
@@ -104,38 +106,51 @@ export default function AlertsPage() {
     return () => window.removeEventListener('dark-recon-refresh', onPullRefresh);
   }, [checkAllAlerts]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ticker.trim() || !targetPrice) return;
-    setSubmitting(true);
-    setSuccessMsg(null);
+  const handleSetAlert = async () => {
+    const ticker = alertTicker.trim().toUpperCase();
+    const price = parseFloat(alertPrice);
+
+    if (!ticker || !alertPrice || isNaN(price) || price <= 0) {
+      setAlertError('Please enter a valid ticker and price');
+      return;
+    }
+
+    setAlertSaving(true);
+    setAlertError(null);
+    setAlertSuccess(null);
+
     try {
       const res = await fetch('/api/alerts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ticker: ticker.trim(),
-          condition,
-          target_price: parseFloat(targetPrice),
-          note: note.trim() || undefined,
+          ticker,
+          condition: alertCondition,
+          target_price: price,
+          note: alertNote.trim() || undefined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create alert');
 
-      const sym = ticker.trim().toUpperCase();
-      setSuccessMsg(
-        `Alert set for ${sym} ${condition} ${formatMoney(parseFloat(targetPrice))}`
-      );
-      setTicker('');
-      setTargetPrice('');
-      setNote('');
-      setTimeout(() => setSuccessMsg(null), 2000);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create alert');
+      }
+
+      setAlertSuccess(`Alert set — ${ticker} ${alertCondition} $${price.toFixed(2)}`);
+      setAlertTicker('');
+      setAlertPrice('');
+      setAlertNote('');
+
       await fetchAlerts();
-    } catch {
-      // silent
+
+      setTimeout(() => setAlertSuccess(null), 3000);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to create alert';
+      console.error('Set alert error:', e);
+      setAlertError(message);
     } finally {
-      setSubmitting(false);
+      setAlertSaving(false);
     }
   };
 
@@ -253,108 +268,133 @@ export default function AlertsPage() {
         >
           SET NEW ALERT
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-            <input
-              type="text"
-              placeholder="TICKER"
-              value={ticker}
-              onChange={(e) => setTicker(e.target.value.toUpperCase())}
-              style={{
-                fontFamily: 'monospace',
-                fontSize: 14,
-                fontWeight: 700,
-                color: '#ffd700',
-                background: '#0d1117',
-                border: '1px solid #1e2a3a',
-                borderRadius: 6,
-                padding: '10px 12px',
-                outline: 'none',
-              }}
-            />
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(['above', 'below'] as const).map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setCondition(c)}
-                  style={{
-                    flex: 1,
-                    fontFamily: 'monospace',
-                    fontSize: 10,
-                    letterSpacing: 1,
-                    color: condition === c ? accentColor(c) : '#7a8fa8',
-                    background: condition === c ? `${accentColor(c)}15` : '#0d1117',
-                    border: `1px solid ${condition === c ? `${accentColor(c)}40` : '#1e2a3a'}`,
-                    borderRadius: 6,
-                    padding: '10px 8px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {c.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Target price"
-              value={targetPrice}
-              onChange={(e) => setTargetPrice(e.target.value)}
-              style={{
-                fontFamily: 'monospace',
-                fontSize: 13,
-                color: '#e8edf5',
-                background: '#0d1117',
-                border: '1px solid #1e2a3a',
-                borderRadius: 6,
-                padding: '10px 12px',
-                outline: 'none',
-              }}
-            />
-            <input
-              type="text"
-              placeholder="e.g. NVDA breakout level"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              style={{
-                fontFamily: 'monospace',
-                fontSize: 12,
-                color: '#7a8fa8',
-                background: '#0d1117',
-                border: '1px solid #1e2a3a',
-                borderRadius: 6,
-                padding: '10px 12px',
-                outline: 'none',
-              }}
-            />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <input
+            type="text"
+            placeholder="TICKER"
+            value={alertTicker}
+            onChange={(e) => setAlertTicker(e.target.value.toUpperCase())}
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 14,
+              fontWeight: 700,
+              color: '#ffd700',
+              background: '#0d1117',
+              border: '1px solid #1e2a3a',
+              borderRadius: 6,
+              padding: '10px 12px',
+              outline: 'none',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(['above', 'below'] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setAlertCondition(c)}
+                style={{
+                  flex: 1,
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  letterSpacing: 1,
+                  color: alertCondition === c ? accentColor(c) : '#7a8fa8',
+                  background: alertCondition === c ? `${accentColor(c)}15` : '#0d1117',
+                  border: `1px solid ${alertCondition === c ? `${accentColor(c)}40` : '#1e2a3a'}`,
+                  borderRadius: 6,
+                  padding: '10px 8px',
+                  cursor: 'pointer',
+                }}
+              >
+                {c.toUpperCase()}
+              </button>
+            ))}
           </div>
-          <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              type="submit"
-              disabled={submitting || !ticker.trim() || !targetPrice}
-              style={{
-                fontFamily: 'monospace',
-                fontSize: 10,
-                letterSpacing: 2,
-                color: '#00ff88',
-                background: '#00ff8815',
-                border: '1px solid #00ff8840',
-                padding: '10px 20px',
-                borderRadius: 6,
-                cursor: submitting ? 'wait' : 'pointer',
-                opacity: !ticker.trim() || !targetPrice ? 0.5 : 1,
-              }}
-            >
-              {submitting ? 'SETTING…' : 'SET ALERT'}
-            </button>
-            {successMsg && (
-              <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#00ff88' }}>
-                {successMsg}
-              </span>
-            )}
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Target price"
+            value={alertPrice}
+            onChange={(e) => setAlertPrice(e.target.value)}
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 13,
+              color: '#e8edf5',
+              background: '#0d1117',
+              border: '1px solid #1e2a3a',
+              borderRadius: 6,
+              padding: '10px 12px',
+              outline: 'none',
+            }}
+          />
+          <input
+            type="text"
+            placeholder="e.g. NVDA breakout level"
+            value={alertNote}
+            onChange={(e) => setAlertNote(e.target.value)}
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 12,
+              color: '#7a8fa8',
+              background: '#0d1117',
+              border: '1px solid #1e2a3a',
+              borderRadius: 6,
+              padding: '10px 12px',
+              outline: 'none',
+            }}
+          />
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <button
+            type="button"
+            onClick={handleSetAlert}
+            disabled={alertSaving || !alertTicker || !alertPrice}
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 10,
+              letterSpacing: 2,
+              color: '#00ff88',
+              background: '#00ff8815',
+              border: '1px solid #00ff8840',
+              padding: '10px 20px',
+              borderRadius: 6,
+              cursor: alertSaving ? 'wait' : 'pointer',
+              opacity: !alertTicker || !alertPrice ? 0.5 : 1,
+            }}
+          >
+            {alertSaving ? 'SETTING…' : 'SET ALERT'}
+          </button>
+        </div>
+        {alertError && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 10,
+              background: '#ff3d5a10',
+              border: '1px solid #ff3d5a40',
+              borderRadius: 8,
+              color: '#ff8fa0',
+              fontSize: 13,
+            }}
+          >
+            {alertError}
           </div>
-        </form>
+        )}
+        {alertSuccess && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 10,
+              background: '#00ff8810',
+              border: '1px solid #00ff8840',
+              borderRadius: 8,
+              color: '#00ff88',
+              fontSize: 13,
+              fontFamily: 'monospace',
+            }}
+          >
+            ✓ {alertSuccess}
+          </div>
+        )}
       </div>
 
       {/* Triggered Alerts */}

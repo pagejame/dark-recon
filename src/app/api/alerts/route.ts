@@ -36,7 +36,10 @@ export async function POST(request: NextRequest) {
       })
       .select()
       .single();
-    if (error) throw error;
+    if (error) {
+      console.error('Create alert error:', error);
+      throw error;
+    }
     return NextResponse.json(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create alert';
