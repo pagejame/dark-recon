@@ -7,7 +7,7 @@ import {
   Zap,
   Brain,
   TrendingUp,
-  CalendarDays,
+  BarChart2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -16,7 +16,7 @@ const navItems = [
   { href: '/signals', label: 'Signals', icon: Zap },
   { href: '/thesis', label: 'Thesis', icon: Brain },
   { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
-  { href: '/earnings', label: 'Earnings', icon: CalendarDays },
+  { href: '/analytics', label: 'Analytics', icon: BarChart2 },
 ];
 
 export default function MobileNav() {
