@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import MorningBriefing from '@/components/dashboard/MorningBriefing';
 import SignalCard from '@/components/dashboard/SignalCard';
 import AgentStatus from '@/components/dashboard/AgentStatus';
@@ -23,6 +24,19 @@ const BASE_AGENTS: Agent[] = [
 
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
 
+interface AlpacaAccount {
+  equity: string;
+  cash: string;
+  buying_power: string;
+  last_equity: string;
+}
+
+function formatMoney(val: string | number) {
+  const n = typeof val === 'string' ? parseFloat(val) : val;
+  if (isNaN(n)) return '—';
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
+
 export default function DashboardContent() {
   const [signals, setSignals] = useState<ScanResult[]>([]);
   const [briefing, setBriefing] = useState<MorningBriefingData | null>(null);
@@ -33,6 +47,8 @@ export default function DashboardContent() {
   const [scanLastRun, setScanLastRun] = useState<string | null>(null);
   const [briefingLastRun, setBriefingLastRun] = useState<string | null>(null);
   const [scanUpdatedAt, setScanUpdatedAt] = useState<string | null>(null);
+  const [account, setAccount] = useState<AlpacaAccount | null>(null);
+  const [accountLoading, setAccountLoading] = useState(true);
 
   const fetchBriefing = useCallback(async () => {
     setBriefingLoading(true);
@@ -52,6 +68,19 @@ export default function DashboardContent() {
       setBriefingError('Briefing unavailable');
     } finally {
       setBriefingLoading(false);
+    }
+  }, []);
+
+  const fetchAccount = useCallback(async () => {
+    setAccountLoading(true);
+    try {
+      const res = await fetch('/api/trading/account');
+      const data = await res.json();
+      if (res.ok) setAccount(data);
+    } catch {
+      // silent
+    } finally {
+      setAccountLoading(false);
     }
   }, []);
 
@@ -80,19 +109,21 @@ export default function DashboardContent() {
   useEffect(() => {
     fetchBriefing();
     fetchScan();
+    fetchAccount();
 
     const interval = setInterval(fetchScan, SCAN_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [fetchBriefing, fetchScan]);
+  }, [fetchBriefing, fetchScan, fetchAccount]);
 
   useEffect(() => {
     const onPullRefresh = () => {
       fetchBriefing();
       fetchScan();
+      fetchAccount();
     };
     window.addEventListener('dark-recon-refresh', onPullRefresh);
     return () => window.removeEventListener('dark-recon-refresh', onPullRefresh);
-  }, [fetchBriefing, fetchScan]);
+  }, [fetchBriefing, fetchScan, fetchAccount]);
 
   const highConviction = signals.filter((s) => s.strength === 'high').length;
   const alertsToday = signals.filter((s) => {
@@ -124,6 +155,8 @@ export default function DashboardContent() {
     if (strength === 'medium') return 'yellow' as const;
     return 'muted' as const;
   };
+
+  const dayPnl = account ? parseFloat(account.equity) - parseFloat(account.last_equity) : 0;
 
   return (
     <div className="space-y-6">
@@ -245,6 +278,45 @@ export default function DashboardContent() {
           ))}
         </div>
       </div>
+
+      <Link href="/portfolio" className="block">
+        <Card className="border-l-2 border-l-accent-green transition-colors hover:border-border-hover">
+          <div className="mb-3 font-mono text-[8px] uppercase tracking-[3px] text-text-muted">
+            PAPER ACCOUNT
+          </div>
+          {accountLoading ? (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-10 animate-pulse rounded bg-bg-elevated" />
+              ))}
+            </div>
+          ) : account ? (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {[
+                { label: 'Portfolio Value', value: formatMoney(account.equity) },
+                { label: 'Cash', value: formatMoney(account.cash) },
+                {
+                  label: 'Day P&L',
+                  value: formatMoney(dayPnl),
+                  color: dayPnl >= 0 ? 'text-accent-green' : 'text-accent-red',
+                },
+                { label: 'Buying Power', value: formatMoney(account.buying_power) },
+              ].map((stat) => (
+                <div key={stat.label}>
+                  <div className="mb-1 font-mono text-[8px] uppercase tracking-wider text-text-muted">
+                    {stat.label}
+                  </div>
+                  <div className={`font-mono text-sm font-bold ${stat.color || 'text-text-primary'}`}>
+                    {stat.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-text-secondary">Paper account unavailable — view portfolio →</p>
+          )}
+        </Card>
+      </Link>
     </div>
   );
 }

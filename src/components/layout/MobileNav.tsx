@@ -6,7 +6,7 @@ import {
   LayoutDashboard,
   Zap,
   Brain,
-  Radar,
+  TrendingUp,
   BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -15,7 +15,7 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/signals', label: 'Signals', icon: Zap },
   { href: '/thesis', label: 'Thesis', icon: Brain },
-  { href: '/recon', label: 'Recon', icon: Radar },
+  { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
   { href: '/journal', label: 'Journal', icon: BookOpen },
 ];
 

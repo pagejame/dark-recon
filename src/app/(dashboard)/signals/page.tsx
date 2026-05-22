@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import TradeModal from '@/components/trading/TradeModal';
 
 interface Signal {
   id: string;
@@ -43,6 +44,11 @@ export default function SignalsPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [tradeSignal, setTradeSignal] = useState<Signal | null>(null);
+  const [tradeLoading, setTradeLoading] = useState(false);
+  const [tradeError, setTradeError] = useState<string | null>(null);
+  const [tradeSuccess, setTradeSuccess] = useState<string | null>(null);
 
   const fetchSignals = useCallback(async () => {
     try {
@@ -68,6 +74,46 @@ export default function SignalsPage() {
       // silent fail
     } finally {
       setScanning(false);
+    }
+  };
+
+  const openTradeModal = (signal: Signal) => {
+    setTradeSignal(signal);
+    setTradeError(null);
+    setTradeModalOpen(true);
+  };
+
+  const executeTrade = async (order: {
+    qty: number;
+    order_type: 'market' | 'limit';
+    limit_price?: number;
+  }) => {
+    if (!tradeSignal) return;
+    setTradeLoading(true);
+    setTradeError(null);
+    try {
+      const res = await fetch('/api/trading/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: tradeSignal.ticker,
+          qty: order.qty,
+          side: 'buy',
+          order_type: order.order_type,
+          limit_price: order.limit_price,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Order failed');
+      await updateStatus(tradeSignal.id, 'executed');
+      setTradeModalOpen(false);
+      setTradeSignal(null);
+      setTradeSuccess('Order submitted');
+      setTimeout(() => setTradeSuccess(null), 3000);
+    } catch (e) {
+      setTradeError(e instanceof Error ? e.message : 'Order failed');
+    } finally {
+      setTradeLoading(false);
     }
   };
 
@@ -280,6 +326,24 @@ export default function SignalsPage() {
           NO SIGNALS MATCH FILTER
         </div>
       ) : (
+        <>
+        {tradeSuccess && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 12,
+              background: '#00ff8815',
+              border: '1px solid #00ff8840',
+              borderRadius: 8,
+              color: '#00ff88',
+              fontFamily: 'monospace',
+              fontSize: 11,
+              letterSpacing: 1,
+            }}
+          >
+            {tradeSuccess}
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filteredSignals.map((signal) => {
             const sc = STRENGTH_COLORS[signal.strength];
@@ -390,6 +454,23 @@ export default function SignalsPage() {
                       >
                         ⚡ EXECUTED
                       </button>
+                      <button
+                        onClick={() => openTradeModal(signal)}
+                        style={{
+                          padding: '6px 14px',
+                          background: '#00ff8820',
+                          border: '1px solid #00ff8860',
+                          borderRadius: 8,
+                          color: '#00ff88',
+                          fontFamily: 'monospace',
+                          fontSize: 9,
+                          letterSpacing: 1,
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                        }}
+                      >
+                        ◆ EXECUTE TRADE
+                      </button>
                     </div>
                   </div>
                 )}
@@ -397,7 +478,23 @@ export default function SignalsPage() {
             );
           })}
         </div>
+        </>
       )}
+
+      <TradeModal
+        isOpen={tradeModalOpen}
+        onClose={() => {
+          setTradeModalOpen(false);
+          setTradeSignal(null);
+          setTradeError(null);
+        }}
+        onConfirm={executeTrade}
+        ticker={tradeSignal?.ticker || ''}
+        side="buy"
+        suggestedPlay={tradeSignal?.signal_type}
+        loading={tradeLoading}
+        error={tradeError}
+      />
     </div>
   );
 }

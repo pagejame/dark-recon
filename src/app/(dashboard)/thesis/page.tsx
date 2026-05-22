@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, type ReactNode, type KeyboardEvent } from 'react';
+import TradeModal from '@/components/trading/TradeModal';
 
 interface ThesisResult {
   ticker: string;
@@ -98,6 +99,10 @@ export default function ThesisPage() {
   const [error, setError] = useState<string | null>(null);
   const [thesis, setThesis] = useState<ThesisResult | null>(null);
   const [savedTheses, setSavedTheses] = useState<SavedThesis[]>([]);
+  const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [tradeLoading, setTradeLoading] = useState(false);
+  const [tradeError, setTradeError] = useState<string | null>(null);
+  const [tradeSuccess, setTradeSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/thesis')
@@ -155,6 +160,39 @@ export default function ThesisPage() {
       alert('Saved to journal.');
     } catch {
       alert('Failed to save to journal.');
+    }
+  };
+
+  const executeTrade = async (order: {
+    qty: number;
+    order_type: 'market' | 'limit';
+    limit_price?: number;
+  }) => {
+    if (!thesis) return;
+    setTradeLoading(true);
+    setTradeError(null);
+    try {
+      const side = thesis.overall_direction === 'bullish' ? 'buy' : 'sell';
+      const res = await fetch('/api/trading/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: thesis.ticker,
+          qty: order.qty,
+          side,
+          order_type: order.order_type,
+          limit_price: order.limit_price,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Order failed');
+      setTradeModalOpen(false);
+      setTradeSuccess('Order submitted');
+      setTimeout(() => setTradeSuccess(null), 3000);
+    } catch (e) {
+      setTradeError(e instanceof Error ? e.message : 'Order failed');
+    } finally {
+      setTradeLoading(false);
     }
   };
 
@@ -320,12 +358,23 @@ export default function ThesisPage() {
           </SectionCard>
 
           {/* Action Row */}
+          {tradeSuccess && (
+            <div style={{ marginBottom: 12, padding: 12, background: '#00ff8815', border: '1px solid #00ff8840', borderRadius: 8, color: '#00ff88', fontFamily: 'monospace', fontSize: 11, letterSpacing: 1 }}>
+              {tradeSuccess}
+            </div>
+          )}
           <div className="mb-8 flex flex-col gap-3 md:flex-row md:gap-3">
             <button onClick={buildThesis} className="w-full rounded-lg border border-border bg-bg-card px-3.5 py-3.5 font-mono text-[10px] tracking-wider text-text-secondary md:flex-1">
               REGENERATE
             </button>
             <button onClick={saveToJournal} className="w-full rounded-lg border border-accent-green/40 bg-accent-green-dim px-3.5 py-3.5 font-mono text-[10px] tracking-wider text-accent-green md:flex-1">
               SAVE TO JOURNAL
+            </button>
+            <button
+              onClick={() => { setTradeError(null); setTradeModalOpen(true); }}
+              className="w-full rounded-lg border border-accent-green/60 bg-accent-green px-3.5 py-3.5 font-mono text-[10px] font-bold tracking-wider text-bg-primary md:flex-1"
+            >
+              ◆ EXECUTE TRADE
             </button>
           </div>
         </div>
@@ -351,6 +400,20 @@ export default function ThesisPage() {
       )}
 
       <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+
+      <TradeModal
+        isOpen={tradeModalOpen}
+        onClose={() => {
+          setTradeModalOpen(false);
+          setTradeError(null);
+        }}
+        onConfirm={executeTrade}
+        ticker={thesis?.ticker || ''}
+        side={thesis?.overall_direction === 'bullish' ? 'buy' : 'sell'}
+        suggestedPlay={thesis?.options_setup.recommended_play}
+        loading={tradeLoading}
+        error={tradeError}
+      />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -20,6 +21,7 @@ const navItems = [
   { href: '/recon', label: 'Recon Feed', icon: Radar },
   { href: '/signals', label: 'Signals', icon: Zap },
   { href: '/thesis', label: 'Thesis Builder', icon: Brain },
+  { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
   { href: '/journal', label: 'Trade Journal', icon: BookOpen },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
