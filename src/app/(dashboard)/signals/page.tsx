@@ -10,7 +10,8 @@ interface Signal {
   strength: 'high' | 'medium' | 'low';
   summary: string;
   status: string;
-  created_at: string;
+  created_at?: string;
+  scanned_at?: string;
 }
 
 const SIGNAL_TYPE_LABELS: Record<string, string> = {
@@ -150,6 +151,14 @@ export default function SignalsPage() {
 
   const highCount = signals.filter((s) => s.strength === 'high').length;
   const allTypes = [...new Set(signals.map((s) => s.signal_type))];
+
+  const getSignalTime = (signal: Signal) => {
+    const dateStr = signal.created_at || signal.scanned_at;
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString();
+  };
 
   return (
     <div className="mx-auto max-w-[1000px] px-3.5 py-6 md:p-6">
@@ -348,6 +357,7 @@ export default function SignalsPage() {
           {filteredSignals.map((signal) => {
             const sc = STRENGTH_COLORS[signal.strength];
             const isExpanded = expandedId === signal.id;
+            const signalTime = getSignalTime(signal);
             return (
               <div
                 key={signal.id}
@@ -375,7 +385,8 @@ export default function SignalsPage() {
                       className="mt-1 hidden font-mono text-[9px] md:inline"
                       style={{ color: STATUS_COLORS[signal.status] || '#7a8fa8' }}
                     >
-                      {signal.status?.toUpperCase()} · {new Date(signal.created_at).toLocaleTimeString()}
+                      {signal.status?.toUpperCase()}
+                      {signalTime ? ` · ${signalTime}` : ''}
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
