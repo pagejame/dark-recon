@@ -67,15 +67,21 @@ export default function PerformanceChart() {
 
     const equities = history.equity;
     const timestamps = history.timestamp;
-    const minVal = Math.min(...equities);
+    const nonZeroEquities = equities.filter((e) => e > 0);
+    const minVal = nonZeroEquities.length > 0 ? Math.min(...nonZeroEquities) : Math.min(...equities);
     const maxVal = Math.max(...equities);
     const range = maxVal - minVal || 1;
-    const startVal = equities[0];
     const endVal = equities[equities.length - 1];
-    const isPositive = endVal >= startVal;
+
+    const firstNonZero = equities.find((e) => e > 0) || equities[0];
+    const effectiveStart = firstNonZero > 0 ? firstNonZero : endVal;
+    const totalReturn =
+      effectiveStart > 0
+        ? (((endVal - effectiveStart) / effectiveStart) * 100).toFixed(2)
+        : '0.00';
+    const totalDollar = (endVal - effectiveStart).toFixed(2);
+    const isPositive = endVal >= effectiveStart;
     const lineColor = isPositive ? '#00ff88' : '#ff3d5a';
-    const totalReturn = (((endVal - startVal) / startVal) * 100).toFixed(2);
-    const totalDollar = (endVal - startVal).toFixed(2);
 
     const width = 800;
     const height = 180;
