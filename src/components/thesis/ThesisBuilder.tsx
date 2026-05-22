@@ -6,7 +6,6 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import type { Thesis } from '@/types';
 import { createJournalEntry } from '@/lib/db/journal';
-import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SavedThesis {
@@ -19,8 +18,11 @@ interface SavedThesis {
   generated_at: string;
 }
 
+const monoLabel =
+  'font-mono text-[9px] uppercase tracking-[3px] text-text-muted';
+
 const inputClass =
-  'w-full rounded-md border border-border bg-bg-secondary px-4 py-4 font-mono text-2xl font-bold uppercase tracking-wider text-text-primary placeholder:text-text-muted focus:border-accent-green focus:outline-none';
+  'w-full rounded-md border border-border bg-bg-secondary px-4 py-4 font-mono text-xl uppercase tracking-wider text-text-primary placeholder:text-text-muted placeholder:normal-case focus:border-accent-green focus:outline-none';
 
 function directionVariant(direction: string) {
   if (direction === 'bullish') return 'green' as const;
@@ -127,44 +129,42 @@ export default function ThesisBuilder() {
 
   return (
     <div className="space-y-6">
-      <Card accent="green" className="relative overflow-hidden">
-        <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent-green">
-          Thesis Builder
+      {/* Top — Ticker Input */}
+      <Card className="border-border bg-bg-card">
+        <p className={cn(monoLabel, 'text-accent-green')}>THESIS BUILDER</p>
+        <p className="mt-2 text-sm text-text-secondary">
+          Type any ticker to generate a complete AI investment thesis
         </p>
-        <div className="mt-4 space-y-4">
+
+        <div className="mt-6 space-y-4">
           <input
             type="text"
             className={inputClass}
-            placeholder="NVDA"
+            placeholder="Enter ticker (e.g. NVDA)"
             value={ticker}
             maxLength={5}
             onChange={(e) => setTicker(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
-            onKeyDown={(e) => e.key === 'Enter' && !loading && generateThesis()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !loading && activeTicker) generateThesis();
+            }}
             disabled={loading}
+            aria-label="Ticker symbol"
           />
+
           <Button
             className="w-full font-mono text-sm uppercase tracking-wider"
             onClick={() => generateThesis()}
             disabled={loading || !activeTicker}
           >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Building…
-              </span>
-            ) : (
-              'Build Thesis'
-            )}
+            BUILD THESIS
           </Button>
-        </div>
 
-        {loading && (
-          <div className="mt-6 animate-pulse rounded-md border border-border bg-bg-secondary p-6 text-center">
-            <p className="font-mono text-sm text-text-secondary">
-              Agents analyzing {activeTicker || '…'}…
+          {loading && (
+            <p className="text-center font-mono text-xs uppercase tracking-wider text-text-secondary">
+              AGENTS ANALYZING {activeTicker}…
             </p>
-          </div>
-        )}
+          )}
+        </div>
 
         {error && (
           <div className="mt-4 rounded-md border border-accent-red/50 bg-accent-red-dim p-4">
@@ -173,23 +173,11 @@ export default function ThesisBuilder() {
         )}
       </Card>
 
+      {/* Result — shown after generation */}
       {thesis && !loading && (
         <div className="animate-fade-in space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <Button variant="secondary" size="sm" onClick={() => generateThesis(thesis.ticker)}>
-              Regenerate
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleSaveToJournal}
-              disabled={savingJournal}
-            >
-              {savingJournal ? 'Saving…' : journalSaved ? 'Saved to Journal' : 'Save to Journal'}
-            </Button>
-          </div>
-
-          <Card>
+          {/* 1. Header */}
+          <Card className="bg-bg-card">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h2 className="font-heading text-2xl font-bold text-text-primary">
@@ -198,8 +186,8 @@ export default function ThesisBuilder() {
                 <p className="font-mono text-lg text-text-secondary">{thesis.ticker}</p>
               </div>
               <div className="flex flex-wrap items-center gap-4">
-                <div className="text-right">
-                  <p className="font-mono text-xs uppercase text-text-muted">Price</p>
+                <div>
+                  <p className={monoLabel}>Current Price</p>
                   <p className="font-mono text-xl font-bold text-text-primary">
                     ${Number(thesis.current_price).toFixed(2)}
                   </p>
@@ -210,30 +198,29 @@ export default function ThesisBuilder() {
               </div>
             </div>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex-1">
-                <p className="font-mono text-xs uppercase text-text-muted">Conviction Score</p>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="font-heading text-4xl font-bold text-text-primary">
-                    {thesis.conviction_score}
-                  </span>
-                  <span className="font-mono text-lg text-text-muted">/ 10</span>
-                </div>
-                <div className="mt-2 h-2 w-full max-w-xs overflow-hidden rounded-full bg-bg-secondary">
-                  <div
-                    className={cn('h-full rounded-full transition-all', convictionColor(thesis.conviction_score))}
-                    style={{ width: `${thesis.conviction_score * 10}%` }}
-                  />
-                </div>
+            <div className="mt-6">
+              <p className={monoLabel}>Conviction Score</p>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="font-heading text-4xl font-bold text-text-primary">
+                  {thesis.conviction_score}
+                </span>
+                <span className="font-mono text-lg text-text-muted">/ 10</span>
               </div>
-              <p className="font-mono text-xs text-text-muted">
-                Generated {new Date(thesis.generated_at).toLocaleString()}
-              </p>
+              <div className="mt-2 h-2 w-full max-w-md overflow-hidden rounded-full bg-bg-secondary">
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-all',
+                    convictionColor(thesis.conviction_score)
+                  )}
+                  style={{ width: `${Math.min(thesis.conviction_score * 10, 100)}%` }}
+                />
+              </div>
             </div>
           </Card>
 
-          <Card accent="green">
-            <p className="font-mono text-xs uppercase tracking-wider text-accent-green">Bull Case</p>
+          {/* 2. Bull Case */}
+          <Card accent="green" className="bg-bg-card">
+            <p className={cn(monoLabel, 'text-accent-green')}>BULL CASE</p>
             <p className="mt-3 text-base leading-relaxed text-text-primary">
               {thesis.bull_case.summary}
             </p>
@@ -247,7 +234,7 @@ export default function ThesisBuilder() {
             </ul>
             <div className="mt-4 flex flex-wrap gap-2">
               <span className="rounded-full border border-accent-green/30 bg-accent-green-dim px-3 py-1 font-mono text-xs text-accent-green">
-                Target {thesis.bull_case.price_target}
+                {thesis.bull_case.price_target}
               </span>
               <span className="rounded-full border border-border bg-bg-secondary px-3 py-1 font-mono text-xs text-text-secondary">
                 {thesis.bull_case.timeframe}
@@ -255,8 +242,9 @@ export default function ThesisBuilder() {
             </div>
           </Card>
 
-          <Card accent="red">
-            <p className="font-mono text-xs uppercase tracking-wider text-accent-red">Bear Case</p>
+          {/* 3. Bear Case */}
+          <Card accent="red" className="bg-bg-card">
+            <p className={cn(monoLabel, 'text-accent-red')}>BEAR CASE</p>
             <p className="mt-3 text-base leading-relaxed text-text-primary">
               {thesis.bear_case.summary}
             </p>
@@ -272,18 +260,17 @@ export default function ThesisBuilder() {
               <span className="inline-block rounded-full border border-accent-red/30 bg-accent-red-dim px-3 py-1 font-mono text-xs text-accent-red">
                 Downside {thesis.bear_case.downside_target}
               </span>
-              <p className="text-sm text-text-secondary">
-                <span className="font-mono text-xs uppercase text-text-muted">Key risk: </span>
+              <p className="rounded-md border border-accent-red/20 bg-accent-red-dim/50 p-3 text-sm text-text-primary">
+                <span className={monoLabel}>Key Risk </span>
                 {thesis.bear_case.key_risk}
               </p>
             </div>
           </Card>
 
-          <Card accent="blue">
-            <p className="font-mono text-xs uppercase tracking-wider text-accent-blue">
-              Recommended Play
-            </p>
-            <p className="mt-3 font-mono text-xl font-bold text-text-primary">
+          {/* 4. Options Setup */}
+          <Card accent="blue" className="bg-bg-card">
+            <p className={cn(monoLabel, 'text-accent-blue')}>RECOMMENDED PLAY</p>
+            <p className="mt-3 font-mono text-xl font-bold uppercase text-text-primary">
               {thesis.options_setup.recommended_play}
             </p>
             <div className="mt-4 grid grid-cols-2 gap-3">
@@ -297,7 +284,7 @@ export default function ThesisBuilder() {
                   key={item.label}
                   className="rounded-md border border-border bg-bg-secondary p-3"
                 >
-                  <p className="font-mono text-xs uppercase text-text-muted">{item.label}</p>
+                  <p className={monoLabel}>{item.label}</p>
                   <p className="mt-1 font-mono text-sm font-bold text-text-primary">{item.value}</p>
                 </div>
               ))}
@@ -305,8 +292,9 @@ export default function ThesisBuilder() {
             <p className="mt-4 text-sm text-text-secondary">{thesis.options_setup.rationale}</p>
           </Card>
 
-          <Card>
-            <p className="font-mono text-xs uppercase tracking-wider text-text-muted">Catalysts</p>
+          {/* 5. Catalysts */}
+          <Card className="bg-bg-card">
+            <p className={monoLabel}>CATALYSTS</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {thesis.catalysts.upcoming.map((c, i) => (
                 <span
@@ -328,50 +316,64 @@ export default function ThesisBuilder() {
             )}
           </Card>
 
-          <Card>
-            <p className="font-mono text-xs uppercase tracking-wider text-text-muted">
-              Technical Levels
-            </p>
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* 6. Technical Levels */}
+          <Card className="bg-bg-card">
+            <p className={monoLabel}>TECHNICAL LEVELS</p>
+            <div className="mt-4 grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-3">
               {[
                 { label: 'Support', value: thesis.technical_levels.support },
                 { label: 'Resistance', value: thesis.technical_levels.resistance },
                 { label: 'Trend', value: thesis.technical_levels.trend },
               ].map((item) => (
-                <div key={item.label}>
-                  <p className="font-mono text-xs uppercase text-text-muted">{item.label}</p>
+                <div key={item.label} className="text-center sm:text-left">
+                  <p className={monoLabel}>{item.label}</p>
                   <p className="mt-1 font-mono text-sm font-bold text-text-primary">{item.value}</p>
                 </div>
               ))}
             </div>
-            <div className="mt-4 grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-2">
-              <div>
-                <p className="font-mono text-xs uppercase text-text-muted">Insider Activity</p>
-                <p className="mt-1 text-sm text-text-secondary">{thesis.insider_activity}</p>
-              </div>
-              <div>
-                <p className="font-mono text-xs uppercase text-text-muted">News Sentiment</p>
-                <p className="mt-1 text-sm text-text-secondary">{thesis.news_sentiment}</p>
-              </div>
-            </div>
           </Card>
 
-          <Card accent="yellow">
-            <p className="font-mono text-xs uppercase tracking-wider text-accent-yellow">
-              Dark Recon Verdict
-            </p>
-            <p className="mt-4 text-base leading-relaxed text-text-primary">
+          {/* 7. Dark Recon Verdict */}
+          <Card accent="yellow" className="bg-bg-card">
+            <p className={cn(monoLabel, 'text-accent-yellow')}>DARK RECON VERDICT</p>
+            <p className="mt-4 text-lg leading-relaxed text-text-primary">
               {thesis.dark_recon_verdict}
             </p>
           </Card>
+
+          {/* 8. Action row */}
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              className="font-mono text-xs uppercase tracking-wider"
+              onClick={() => generateThesis(thesis.ticker)}
+            >
+              REGENERATE
+            </Button>
+            <Button
+              variant="secondary"
+              className="font-mono text-xs uppercase tracking-wider"
+              onClick={handleSaveToJournal}
+              disabled={savingJournal}
+            >
+              {savingJournal ? 'SAVING…' : journalSaved ? 'SAVED TO JOURNAL' : 'SAVE TO JOURNAL'}
+            </Button>
+          </div>
         </div>
       )}
 
-      {savedTheses.length > 0 && (
-        <div>
-          <h2 className="mb-4 font-heading text-lg font-semibold text-text-primary">
-            Saved Theses
-          </h2>
+      {/* Bottom — Saved Theses */}
+      <div>
+        <h2 className="mb-4 font-heading text-lg font-semibold text-text-primary">
+          Saved Theses
+        </h2>
+        {savedTheses.length === 0 ? (
+          <Card className="bg-bg-card">
+            <p className="py-6 text-center text-sm text-text-secondary">
+              Generated theses will appear here.
+            </p>
+          </Card>
+        ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {savedTheses.map((saved) => (
               <button
@@ -404,8 +406,8 @@ export default function ThesisBuilder() {
               </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
