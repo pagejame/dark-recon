@@ -503,6 +503,7 @@ export default function SignalsPage() {
         ticker={tradeSignal?.ticker || ''}
         side="buy"
         suggestedPlay={tradeSignal?.signal_type}
+        signalStrength={tradeSignal?.strength}
         loading={tradeLoading}
         error={tradeError}
       />

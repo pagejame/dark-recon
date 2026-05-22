@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, type CSSProperties } from 'react';
+import PerformanceChart from '@/components/portfolio/PerformanceChart';
 
 interface AlpacaAccount {
   equity: string;
@@ -224,6 +225,8 @@ export default function PortfolioPage() {
           Alpaca paper trading account
         </div>
       </div>
+
+      <PerformanceChart />
 
       {/* Account Overview */}
       <div

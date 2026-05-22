@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface TradeModalProps {
   isOpen: boolean;
@@ -15,6 +15,7 @@ interface TradeModalProps {
   suggestedPlay?: string;
   loading?: boolean;
   error?: string | null;
+  signalStrength?: 'high' | 'medium' | 'low';
 }
 
 export default function TradeModal({
@@ -26,10 +27,39 @@ export default function TradeModal({
   suggestedPlay,
   loading,
   error,
+  signalStrength = 'medium',
 }: TradeModalProps) {
   const [qty, setQty] = useState(1);
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
   const [limitPrice, setLimitPrice] = useState('');
+  const [sizing, setSizing] = useState<{
+    recommended_qty: number;
+    dollar_value: number;
+    risk_pct: number;
+    note: string;
+  } | null>(null);
+  const [sizingLoading, setSizingLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && ticker) {
+      setSizingLoading(true);
+      setSizing(null);
+      fetch('/api/trading/sizing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker, strength: signalStrength || 'medium' }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.recommended_qty) {
+            setQty(data.recommended_qty);
+            setSizing(data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setSizingLoading(false));
+    }
+  }, [isOpen, ticker, signalStrength]);
 
   if (!isOpen) return null;
 
@@ -134,6 +164,53 @@ export default function TradeModal({
               }}
             />
           </div>
+
+          {sizingLoading && (
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 9,
+                color: '#7a8fa8',
+                letterSpacing: 1,
+              }}
+            >
+              CALCULATING POSITION SIZE...
+            </div>
+          )}
+          {sizing && !sizingLoading && (
+            <div
+              style={{
+                background: '#0d1117',
+                border: '1px solid #1e2a3a',
+                borderRadius: 8,
+                padding: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 2,
+                  color: '#7a8fa8',
+                  marginBottom: 4,
+                }}
+              >
+                RISK MANAGEMENT
+              </div>
+              <div style={{ fontSize: 12, color: '#e8edf5', marginBottom: 4 }}>{sizing.note}</div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#00ff88' }}>
+                  {sizing.recommended_qty} shares
+                </span>
+                <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#7a8fa8' }}>
+                  ≈ ${sizing.dollar_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </span>
+                <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#ffd700' }}>
+                  {sizing.risk_pct}% of portfolio
+                </span>
+              </div>
+            </div>
+          )}
 
           <div>
             <div
