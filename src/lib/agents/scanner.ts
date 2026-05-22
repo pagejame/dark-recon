@@ -1,116 +1,86 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { getMultipleSnapshots } from '@/lib/api/polygon';
-import { saveSignal, signalExistsRecently } from '@/lib/db/signals';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
-
-const DEFAULT_WATCHLIST = [
-  'SPY', 'QQQ', 'NVDA', 'AMD', 'TSLA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL',
-];
 
 export interface ScanResult {
   ticker: string;
   signal_type: string;
   strength: 'high' | 'medium' | 'low';
   summary: string;
-  raw_data: unknown;
   scanned_at: string;
 }
 
-interface PolygonTickerSnapshot {
-  ticker: string;
-  todaysChangePerc?: number;
-  day?: { v?: number; c?: number };
-  prevDay?: { v?: number };
-}
+const WATCHLIST = [
+  'SPY', 'QQQ', 'NVDA', 'AMD', 'TSLA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL',
+];
 
-interface ClaudeSignal {
-  ticker: string;
-  signal_type: string;
-  strength: 'high' | 'medium' | 'low';
-  summary: string;
-}
+export async function runMarketScan(tickers?: string[]): Promise<ScanResult[]> {
+  const watchlist = tickers && tickers.length > 0 ? tickers : WATCHLIST;
+  const today = new Date().toDateString();
+  const time = new Date().toLocaleTimeString();
 
-export async function runMarketScan(
-  watchlist: string[] = DEFAULT_WATCHLIST
-): Promise<ScanResult[]> {
-  const results: ScanResult[] = [];
+  const message = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1500,
+    messages: [
+      {
+        role: 'user',
+        content: `You are Dark Recon's Market Scanner Agent. Today is ${today} at ${time}.
 
-  try {
-    const snapshots = await getMultipleSnapshots(watchlist);
-    const tickers: PolygonTickerSnapshot[] = snapshots?.tickers || [];
+Analyze these tickers and identify the 3 most interesting signals based on your knowledge of current market conditions: ${watchlist.join(', ')}
 
-    const dataString = tickers
-      .map((t) => {
-        const change = t.todaysChangePerc?.toFixed(2) || '0';
-        const volume = t.day?.v || 0;
-        const avgVolume = t.prevDay?.v || 1;
-        const volRatio = (volume / avgVolume).toFixed(2);
-        return `${t.ticker}: ${change}% change, volume ratio vs yesterday: ${volRatio}x, price: $${t.day?.c || 'N/A'}`;
-      })
-      .join('\n');
+Respond with a single JSON array only. No text before or after. No markdown. No code fences. Just the raw JSON array starting with [ and ending with ].
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      messages: [
-        {
-          role: 'user',
-          content: `You are Dark Recon's Market Scanner Agent. Analyze this real-time market data and identify the top 3 most interesting signals. 
-
-Market data:
-${dataString}
-
-For each signal return ONLY a JSON array with this structure:
+Use this exact structure:
 [
   {
     "ticker": "NVDA",
-    "signal_type": "unusual_volume",
+    "signal_type": "momentum_breakout",
     "strength": "high",
-    "summary": "Volume running 4.2x average with 3.1% move. Momentum signal worth watching."
+    "summary": "Specific 1-2 sentence summary of why this ticker is signaling right now based on current market knowledge."
+  },
+  {
+    "ticker": "AMD", 
+    "signal_type": "unusual_volume",
+    "strength": "medium",
+    "summary": "Specific 1-2 sentence summary."
+  },
+  {
+    "ticker": "SPY",
+    "signal_type": "sector_leader",
+    "strength": "low",
+    "summary": "Specific 1-2 sentence summary."
   }
 ]
 
-Signal types: unusual_volume, momentum_breakout, unusual_options, reversal_candidate, sector_leader
-Strength: high (act on it), medium (watch it), low (note it)
-Return only valid JSON, no other text.`,
-        },
-      ],
-    });
+Signal types: unusual_volume, momentum_breakout, unusual_options, reversal_candidate, sector_leader, insider_activity, squeeze_candidate
+Strength values: high, medium, low
 
-    const text = response.content
-      .map((b) => (b.type === 'text' ? b.text : ''))
-      .join('');
-    const clean = text.replace(/```json|```/g, '').trim();
-    const signals: ClaudeSignal[] = JSON.parse(clean);
+Base your analysis on your training knowledge of these companies and current macro conditions. Be specific and actionable.`,
+      },
+    ],
+  });
 
-    for (const s of signals) {
-      const scannedAt = new Date().toISOString();
-      const scanResult: ScanResult = {
-        ...s,
-        raw_data: tickers.find((t) => t.ticker === s.ticker),
-        scanned_at: scannedAt,
-      };
-      results.push(scanResult);
+  const rawText = message.content
+    .filter((block) => block.type === 'text')
+    .map((block) => (block as { type: 'text'; text: string }).text)
+    .join('');
 
-      const exists = await signalExistsRecently(s.ticker, s.signal_type);
-      if (!exists) {
-        await saveSignal({
-          ticker: s.ticker,
-          signal_type: s.signal_type,
-          strength: s.strength,
-          summary: s.summary,
-          raw_data: scanResult.raw_data,
-          status: 'pending',
-          scanned_at: scannedAt,
-        });
-      }
-    }
-  } catch (e) {
-    console.error('Scanner agent error:', e);
+  const start = rawText.indexOf('[');
+  const end = rawText.lastIndexOf(']');
+
+  if (start === -1 || end === -1 || end <= start) {
+    console.error('Scanner raw response:', rawText);
+    throw new Error('Could not find valid JSON array in scanner response');
   }
 
-  return results;
+  const jsonStr = rawText.slice(start, end + 1);
+  const signals = JSON.parse(jsonStr) as Omit<ScanResult, 'scanned_at'>[];
+
+  return signals.map((s) => ({
+    ...s,
+    scanned_at: new Date().toISOString(),
+  }));
 }

@@ -6,6 +6,7 @@ import SignalCard from '@/components/dashboard/SignalCard';
 import AgentStatus from '@/components/dashboard/AgentStatus';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
 import type { ScanResult } from '@/lib/agents/scanner';
 import type { MorningBriefing as MorningBriefingData } from '@/lib/agents/briefing';
 import type { Agent } from '@/types';
@@ -27,21 +28,28 @@ export default function DashboardContent() {
   const [briefing, setBriefing] = useState<MorningBriefingData | null>(null);
   const [scanLoading, setScanLoading] = useState(true);
   const [briefingLoading, setBriefingLoading] = useState(true);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [briefingError, setBriefingError] = useState<string | null>(null);
   const [scanLastRun, setScanLastRun] = useState<string | null>(null);
   const [briefingLastRun, setBriefingLastRun] = useState<string | null>(null);
   const [scanUpdatedAt, setScanUpdatedAt] = useState<string | null>(null);
 
   const fetchBriefing = useCallback(async () => {
     setBriefingLoading(true);
+    setBriefingError(null);
     try {
       const res = await fetch('/api/briefing');
-      if (res.ok) {
-        const data: MorningBriefingData = await res.json();
-        setBriefing(data);
-        setBriefingLastRun(data.generated_at);
+      const data = await res.json();
+      if (!res.ok) {
+        setBriefing(null);
+        setBriefingError(data.error || 'Briefing failed');
+        return;
       }
+      setBriefing(data);
+      setBriefingLastRun(data.generated_at);
     } catch {
-      // Briefing fetch failed silently; card shows fallback state
+      setBriefing(null);
+      setBriefingError('Briefing unavailable');
     } finally {
       setBriefingLoading(false);
     }
@@ -49,16 +57,21 @@ export default function DashboardContent() {
 
   const fetchScan = useCallback(async () => {
     setScanLoading(true);
+    setScanError(null);
     try {
       const res = await fetch('/api/scan');
-      if (res.ok) {
-        const data = await res.json();
-        setSignals(data.signals || []);
-        setScanLastRun(data.scanned_at);
-        setScanUpdatedAt(data.scanned_at);
+      const data = await res.json();
+      if (!res.ok) {
+        setSignals([]);
+        setScanError(data.error || 'Scanner failed');
+        return;
       }
+      setSignals(data.signals || []);
+      setScanLastRun(data.scanned_at);
+      setScanUpdatedAt(data.scanned_at);
     } catch {
-      // Scan fetch failed silently; table shows empty state
+      setSignals([]);
+      setScanError('Scanner offline');
     } finally {
       setScanLoading(false);
     }
@@ -83,14 +96,14 @@ export default function DashboardContent() {
     if (agent.type === 'scanner') {
       return {
         ...agent,
-        status: scanLoading ? 'active' : 'standby',
+        status: scanError ? 'error' : scanLoading ? 'active' : 'standby',
         last_run: scanLastRun || undefined,
       };
     }
     if (agent.type === 'briefing') {
       return {
         ...agent,
-        status: briefingLoading ? 'active' : 'standby',
+        status: briefingError ? 'error' : briefingLoading ? 'active' : 'standby',
         last_run: briefingLastRun || undefined,
       };
     }
@@ -108,8 +121,12 @@ export default function DashboardContent() {
       <MorningBriefing
         loading={briefingLoading}
         briefing={briefing}
-        agentStatus={briefingLoading ? 'active' : 'standby'}
+        agentStatus={
+          briefingError ? 'error' : briefingLoading ? 'active' : 'standby'
+        }
         lastUpdated={briefingLastRun}
+        error={briefingError}
+        onRetry={fetchBriefing}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -123,10 +140,15 @@ export default function DashboardContent() {
           <h2 className="font-heading text-lg font-semibold text-text-primary">Recent Signals</h2>
           <div className="flex items-center gap-3">
             {scanLoading && <Loader2 className="h-4 w-4 animate-spin text-accent-green" />}
-            {scanUpdatedAt && (
+            {scanUpdatedAt && !scanError && (
               <span className="font-mono text-xs text-text-muted">
                 Updated {new Date(scanUpdatedAt).toLocaleTimeString()}
               </span>
+            )}
+            {scanError && (
+              <Button variant="secondary" size="sm" onClick={fetchScan}>
+                Retry Scan
+              </Button>
             )}
           </div>
         </div>
@@ -142,13 +164,22 @@ export default function DashboardContent() {
               </tr>
             </thead>
             <tbody>
-              {scanLoading && signals.length === 0 ? (
+              {scanLoading && signals.length === 0 && !scanError ? (
                 <tr>
                   <td colSpan={5} className="py-12 text-center text-text-secondary">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin text-accent-green" />
                       Market Scanner is running…
                     </div>
+                  </td>
+                </tr>
+              ) : scanError && signals.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center">
+                    <p className="text-sm text-accent-red">Scanner offline — retrying…</p>
+                    <Button variant="secondary" size="sm" className="mt-4" onClick={fetchScan}>
+                      Retry Scan
+                    </Button>
                   </td>
                 </tr>
               ) : signals.length === 0 ? (
@@ -159,7 +190,10 @@ export default function DashboardContent() {
                 </tr>
               ) : (
                 signals.map((signal) => (
-                  <tr key={`${signal.ticker}-${signal.scanned_at}`} className="border-b border-border/50">
+                  <tr
+                    key={`${signal.ticker}-${signal.scanned_at}`}
+                    className="border-b border-border/50"
+                  >
                     <td className="py-3 pr-4 font-mono font-bold text-text-primary">
                       {signal.ticker}
                     </td>

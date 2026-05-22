@@ -1,47 +1,48 @@
 import { NextResponse } from 'next/server';
-import { runMarketScan, type ScanResult } from '@/lib/agents/scanner';
-import { getRecentSignals, type DbSignal } from '@/lib/db/signals';
-import { getWatchlist } from '@/lib/db/watchlist';
-
-const CACHE_WINDOW_MS = 5 * 60 * 1000;
-
-function dbSignalToScanResult(signal: DbSignal): ScanResult {
-  return {
-    ticker: signal.ticker,
-    signal_type: signal.signal_type,
-    strength: signal.strength,
-    summary: signal.summary,
-    raw_data: signal.raw_data,
-    scanned_at: signal.scanned_at || signal.created_at,
-  };
-}
+import { runMarketScan } from '@/lib/agents/scanner';
+import { saveSignal, getRecentSignals } from '@/lib/db/signals';
 
 export async function GET() {
   try {
-    const recent = await getRecentSignals(20);
-    const cutoff = Date.now() - CACHE_WINDOW_MS;
-    const fresh = recent.filter((s) => new Date(s.created_at).getTime() > cutoff);
+    const cached = await getRecentSignals(20);
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const fresh = cached.filter(
+      (s) => new Date(s.scanned_at || s.created_at) > fiveMinutesAgo
+    );
 
     if (fresh.length > 0) {
-      const scannedAt = fresh[0].scanned_at;
-      return NextResponse.json(
-        { signals: fresh.map(dbSignalToScanResult), scanned_at: scannedAt },
-        { headers: { 'X-Cache': 'HIT' } }
-      );
+      return NextResponse.json({
+        signals: fresh,
+        scanned_at: new Date().toISOString(),
+        cache: 'HIT',
+      });
     }
 
-    const watchlist = await getWatchlist();
-    const tickers =
-      watchlist.length > 0
-        ? watchlist.map((w) => w.ticker)
-        : ['SPY', 'QQQ', 'NVDA', 'AMD', 'TSLA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL'];
+    const signals = await runMarketScan();
 
-    const signals = await runMarketScan(tickers);
-    return NextResponse.json(
-      { signals, scanned_at: new Date().toISOString() },
-      { headers: { 'X-Cache': 'MISS' } }
-    );
-  } catch {
-    return NextResponse.json({ error: 'Scanner failed' }, { status: 500 });
+    for (const signal of signals) {
+      try {
+        await saveSignal({
+          ticker: signal.ticker,
+          signal_type: signal.signal_type,
+          strength: signal.strength,
+          summary: signal.summary,
+          status: 'pending',
+          scanned_at: signal.scanned_at,
+        });
+      } catch (e) {
+        console.error('Failed to save signal:', e);
+      }
+    }
+
+    return NextResponse.json({
+      signals,
+      scanned_at: new Date().toISOString(),
+      cache: 'MISS',
+    });
+  } catch (error) {
+    console.error('Scan route error:', error);
+    const message = error instanceof Error ? error.message : 'Scanner failed';
+    return NextResponse.json({ error: message, signals: [] }, { status: 500 });
   }
 }

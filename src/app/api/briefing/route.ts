@@ -1,40 +1,33 @@
 import { NextResponse } from 'next/server';
-import { generateMorningBriefing, type MorningBriefing } from '@/lib/agents/briefing';
-import { getTodaysBriefing } from '@/lib/db/briefings';
-
-function mapDbBriefing(row: {
-  date: string;
-  market_status: string | null;
-  sentiment: string | null;
-  briefing_text: string;
-  top_signals: unknown;
-  key_levels: unknown;
-  generated_at: string;
-}): MorningBriefing {
-  return {
-    date: row.date,
-    market_status: row.market_status || 'unknown',
-    sentiment: (row.sentiment as MorningBriefing['sentiment']) || 'neutral',
-    briefing_text: row.briefing_text,
-    top_signals: (row.top_signals as string[]) || [],
-    key_levels:
-      (row.key_levels as MorningBriefing['key_levels']) || [],
-    generated_at: row.generated_at,
-  };
-}
+import { generateMorningBriefing } from '@/lib/agents/briefing';
+import { getTodaysBriefing, saveBriefing } from '@/lib/db/briefings';
 
 export async function GET() {
   try {
     const cached = await getTodaysBriefing();
     if (cached) {
-      return NextResponse.json(mapDbBriefing(cached), {
-        headers: { 'X-Cache': 'HIT' },
-      });
+      return NextResponse.json({ ...cached, cache: 'HIT' });
     }
 
     const briefing = await generateMorningBriefing();
-    return NextResponse.json(briefing, { headers: { 'X-Cache': 'MISS' } });
-  } catch {
-    return NextResponse.json({ error: 'Briefing agent failed' }, { status: 500 });
+
+    try {
+      await saveBriefing({
+        date: briefing.date,
+        market_status: briefing.market_status,
+        sentiment: briefing.sentiment,
+        briefing_text: briefing.briefing_text,
+        top_signals: briefing.top_signals,
+        key_levels: briefing.key_levels,
+      });
+    } catch (e) {
+      console.error('Failed to save briefing:', e);
+    }
+
+    return NextResponse.json({ ...briefing, cache: 'MISS' });
+  } catch (error) {
+    console.error('Briefing route error:', error);
+    const message = error instanceof Error ? error.message : 'Briefing failed';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

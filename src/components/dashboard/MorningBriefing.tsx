@@ -2,6 +2,7 @@
 
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
 import type { MorningBriefing as MorningBriefingData } from '@/lib/agents/briefing';
 import { Loader2 } from 'lucide-react';
 
@@ -10,6 +11,8 @@ interface MorningBriefingProps {
   briefing?: MorningBriefingData | null;
   agentStatus?: 'active' | 'standby' | 'error';
   lastUpdated?: string | null;
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 const sentimentVariant = {
@@ -24,6 +27,8 @@ export default function MorningBriefing({
   briefing = null,
   agentStatus = 'standby',
   lastUpdated = null,
+  error = null,
+  onRetry,
 }: MorningBriefingProps) {
   const badgeVariant =
     agentStatus === 'active' ? 'green' : agentStatus === 'error' ? 'red' : 'muted';
@@ -39,11 +44,22 @@ export default function MorningBriefing({
             {loading && <Loader2 className="h-4 w-4 animate-spin text-accent-green" />}
           </div>
 
-          {loading && !briefing && (
+          {loading && !briefing && !error && (
             <p className="text-sm text-text-secondary">Briefing Agent is analyzing market data…</p>
           )}
 
-          {!loading && !briefing && (
+          {error && !loading && (
+            <div className="space-y-3 rounded-md border border-accent-red/40 bg-accent-red-dim p-4">
+              <p className="text-sm text-accent-red">Briefing unavailable — click to retry</p>
+              {onRetry && (
+                <Button variant="secondary" size="sm" onClick={onRetry}>
+                  Retry Briefing
+                </Button>
+              )}
+            </div>
+          )}
+
+          {!loading && !briefing && !error && (
             <p className="text-sm text-text-secondary">
               Your 6AM briefing will appear here once the agent runs.
             </p>
@@ -77,7 +93,7 @@ export default function MorningBriefing({
             </div>
           )}
 
-          {lastUpdated && (
+          {lastUpdated && briefing && (
             <p className="font-mono text-xs text-text-muted">
               Last updated: {new Date(lastUpdated).toLocaleString()}
             </p>
