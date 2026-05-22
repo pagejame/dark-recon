@@ -102,20 +102,22 @@ function SectionCard({
   label,
   borderColor,
   children,
+  className,
 }: {
   label: string;
   borderColor: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
     <div
+      className={className}
       style={{
         background: '#111620',
         border: '1px solid #1e2a3a',
         borderLeft: `3px solid ${borderColor}`,
         borderRadius: 10,
         padding: '20px 24px',
-        marginBottom: 20,
       }}
     >
       <div
@@ -283,7 +285,7 @@ export default function SettingsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-[640px] px-3.5 py-6 md:p-6">
+    <div className="mx-auto max-w-[1000px] px-3.5 py-6 md:p-6">
       <div style={{ marginBottom: 28 }}>
         <div
           style={{
@@ -329,10 +331,11 @@ export default function SettingsPage() {
       )}
 
       {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
           {[1, 2, 3, 4, 5].map((i) => (
             <div
               key={i}
+              className={i === 5 ? 'md:col-span-2' : undefined}
               style={{
                 background: '#111620',
                 border: '1px solid #1e2a3a',
@@ -351,7 +354,7 @@ export default function SettingsPage() {
           ))}
         </div>
       ) : (
-        <>
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
           {/* Risk Management */}
           <SectionCard label="RISK MANAGEMENT" borderColor="#ff3d5a">
             <SettingRow label="Weekly Contribution" description="Amount deposited each week ($)">
@@ -504,7 +507,7 @@ export default function SettingsPage() {
           </SectionCard>
 
           {/* Account */}
-          <SectionCard label="ACCOUNT" borderColor="#7a8fa8">
+          <SectionCard label="ACCOUNT" borderColor="#7a8fa8" className="md:col-span-2">
             <SettingRow label="Paper Trading">
               <span
                 style={{
@@ -567,7 +570,7 @@ export default function SettingsPage() {
               Dark Recon Version: 1.0.0 — Built by Dark Recon AI
             </div>
           </SectionCard>
-        </>
+        </div>
       )}
 
       <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
