@@ -38,6 +38,14 @@ interface SavedThesis {
   generated_at: string;
 }
 
+interface TriggeredAlert {
+  id: string;
+  ticker: string;
+  condition: 'above' | 'below';
+  target_price: number;
+  current_price?: number;
+}
+
 export default function DashboardContent() {
   const [signals, setSignals] = useState<ScanResult[]>([]);
   const [briefing, setBriefing] = useState<MorningBriefingData | null>(null);
@@ -46,6 +54,7 @@ export default function DashboardContent() {
   const [positions, setPositions] = useState<AlpacaPosition[]>([]);
   const [thesesToday, setThesesToday] = useState(0);
   const [tradeCount, setTradeCount] = useState(0);
+  const [triggeredAlerts, setTriggeredAlerts] = useState<TriggeredAlert[]>([]);
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -181,6 +190,16 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const checkAlerts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/alerts/check');
+      const data = await res.json();
+      setTriggeredAlerts(data.triggered || []);
+    } catch {
+      setTriggeredAlerts([]);
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void Promise.allSettled([
       fetchBriefing(),
@@ -189,6 +208,7 @@ export default function DashboardContent() {
       fetchPositions(),
       fetchEarnings(),
       fetchAgentStats(),
+      checkAlerts(),
     ]);
   }, [
     fetchBriefing,
@@ -197,6 +217,7 @@ export default function DashboardContent() {
     fetchPositions,
     fetchEarnings,
     fetchAgentStats,
+    checkAlerts,
   ]);
 
   useEffect(() => {
@@ -281,6 +302,58 @@ export default function DashboardContent() {
   return (
     <div className="flex flex-col gap-4">
       <MarketStatusBar briefing={briefing} earnings={earnings} spyDisplay={spySignal ? `SPY · ${spySignal.summary.slice(0, 30)}…` : undefined} />
+
+      {triggeredAlerts.length > 0 && (
+        <div
+          style={{
+            background: '#ffd70015',
+            border: '1px solid #ffd70040',
+            borderLeft: '3px solid #ffd700',
+            borderRadius: 8,
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 16 }}>⚡</span>
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: '#ffd700',
+                letterSpacing: 1,
+              }}
+            >
+              {triggeredAlerts.length} PRICE ALERT{triggeredAlerts.length > 1 ? 'S' : ''} TRIGGERED
+            </span>
+            <span style={{ fontSize: 13, color: '#e8edf5' }}>
+              {triggeredAlerts
+                .map((a) => `${a.ticker} ${a.condition} $${a.target_price}`)
+                .join(' · ')}
+            </span>
+          </div>
+          <a
+            href="/alerts"
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 9,
+              color: '#ffd700',
+              letterSpacing: 2,
+              textDecoration: 'none',
+              background: '#ffd70015',
+              border: '1px solid #ffd70040',
+              padding: '4px 12px',
+              borderRadius: 6,
+            }}
+          >
+            VIEW ALERTS →
+          </a>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <div className="order-1 lg:order-2 lg:col-span-2 lg:col-start-4">
