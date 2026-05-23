@@ -30,6 +30,7 @@ interface RedditPostData {
   score?: number;
   num_comments?: number;
   permalink?: string;
+  upvote_ratio?: number;
 }
 
 interface RedditChild {
@@ -42,6 +43,10 @@ interface SecHitSource {
   ticker_symbol?: string;
   period_of_report?: string;
   file_date?: string;
+  display_names?: string[];
+  form_type?: string;
+  accession_no?: string;
+  entity_id?: string;
 }
 
 interface SecHit {
@@ -66,42 +71,62 @@ interface ClaudeScore {
 async function sweepReddit(subreddit: string, url: string): Promise<IntelligenceSignal[]> {
   const signals: IntelligenceSignal[] = [];
   try {
-    const res = await fetch(url, {
+    const jsonUrl = url.endsWith('.json') ? url : url + '.json';
+    const res = await fetch(jsonUrl, {
       headers: {
-        'User-Agent': 'DarkRecon/1.0 (financial research tool)',
+        'User-Agent': 'Mozilla/5.0 (compatible; DarkRecon/1.0; +https://dark-recon.com)',
         Accept: 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
       },
     });
-    if (!res.ok) return signals;
-    const data = await res.json();
+
+    if (!res.ok) {
+      console.error(`Reddit ${subreddit} returned ${res.status}`);
+      return signals;
+    }
+
+    const text = await res.text();
+    if (!text || text.startsWith('<')) {
+      console.error(`Reddit ${subreddit} returned HTML instead of JSON`);
+      return signals;
+    }
+
+    const data = JSON.parse(text);
     const posts = (data?.data?.children || []) as RedditChild[];
 
     const relevantPosts = posts
       .filter((p) => {
-        const post = p.data;
-        if (!post) return false;
-        const text = (post.title + ' ' + (post.selftext || '')).toUpperCase();
+        const post = p.data || {};
+        const postText = ((post.title || '') + ' ' + (post.selftext || '')).toUpperCase();
+        const hasWatchlistTicker = WATCHLIST.some((ticker) => {
+          const regex = new RegExp(`\\b${ticker}\\b`);
+          return regex.test(postText);
+        });
         return (
-          WATCHLIST.some((ticker) => text.includes(ticker)) || (post.score || 0) > 500
+          hasWatchlistTicker ||
+          ((post.score || 0) > 500 && (post.upvote_ratio || 0) > 0.85)
         );
       })
-      .slice(0, 5);
+      .slice(0, 4);
 
     relevantPosts.forEach((p) => {
-      const post = p.data!;
-      const text = (post.title + ' ' + (post.selftext || '')).toUpperCase();
-      const mentionedTicker = WATCHLIST.find((t) => text.includes(t));
-      const score = post.score || 0;
+      const post = p.data || {};
+      const postText = ((post.title || '') + ' ' + (post.selftext || '')).toUpperCase();
+      const mentionedTicker = WATCHLIST.find((t) => {
+        const regex = new RegExp(`\\b${t}\\b`);
+        return regex.test(postText);
+      });
 
       signals.push({
         source: `Reddit r/${subreddit}`,
         signal_type: 'social_sentiment',
         ticker: mentionedTicker,
-        headline: post.title?.slice(0, 200) || '',
-        summary: `${score} upvotes, ${post.num_comments || 0} comments on r/${subreddit}`,
-        url: post.permalink ? `https://reddit.com${post.permalink}` : undefined,
+        headline: (post.title || '').slice(0, 200),
+        summary: `${(post.score || 0).toLocaleString()} upvotes · ${post.num_comments || 0} comments · r/${subreddit}`,
+        url: `https://reddit.com${post.permalink || ''}`,
         sentiment: 'neutral',
-        strength: score > 2000 ? 'high' : score > 500 ? 'medium' : 'low',
+        strength:
+          (post.score || 0) > 2000 ? 'high' : (post.score || 0) > 500 ? 'medium' : 'low',
         swept_at: new Date().toISOString(),
       });
     });
@@ -118,10 +143,10 @@ async function sweepSECFilings(): Promise<IntelligenceSignal[]> {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     const res = await fetch(
-      `https://efts.sec.gov/LATEST/search-index?forms=8-K&dateRange=custom&startdt=${yesterday}&enddt=${today}&hits.hits.total.value=true`,
+      `https://efts.sec.gov/LATEST/search-index?forms=8-K&dateRange=custom&startdt=${yesterday}&enddt=${today}`,
       {
         headers: {
-          'User-Agent': 'DarkRecon contact@dark-recon.com',
+          'User-Agent': 'DarkRecon research@dark-recon.com',
           Accept: 'application/json',
         },
       }
@@ -131,24 +156,34 @@ async function sweepSECFilings(): Promise<IntelligenceSignal[]> {
     const data = await res.json();
     const hits = (data?.hits?.hits || []) as SecHit[];
 
-    hits.slice(0, 10).forEach((hit) => {
-      const source = hit._source;
-      const entityName = source?.entity_name || source?.company_name || 'Unknown Company';
+    hits.slice(0, 8).forEach((hit) => {
+      const src = hit._source || {};
+      const entityName = src.entity_name || src.company_name || src.display_names?.[0] || '';
+      const formType = src.form_type || '8-K';
+      const fileDate = src.file_date || src.period_of_report || today;
+      const accessionNo = src.accession_no || '';
+
+      if (!entityName) return;
+
       const ticker = WATCHLIST.find(
         (t) =>
           entityName.toUpperCase().includes(t) ||
-          (source?.ticker_symbol || '').toUpperCase() === t
+          (src.ticker_symbol || '').toUpperCase() === t
       );
+
+      const url = accessionNo
+        ? `https://www.sec.gov/Archives/edgar/data/${src.entity_id || ''}/`
+        : `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(entityName)}&type=8-K&dateb=&owner=include&count=10`;
 
       signals.push({
         source: 'SEC EDGAR 8-K',
         signal_type: 'sec_filing',
         ticker,
-        headline: `${entityName} filed 8-K: ${source?.period_of_report || 'Material Event'}`,
-        summary: `SEC 8-K filing — material event disclosure. Filed ${source?.file_date || today}.`,
-        url: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(entityName)}&type=8-K&dateb=&owner=include&count=10`,
+        headline: `${entityName} filed ${formType} — Material Event Disclosure`,
+        summary: `${entityName} filed an 8-K material event report on ${fileDate}. Review for corporate actions, earnings preannouncements, or significant business changes.`,
+        url,
         sentiment: 'neutral',
-        strength: 'medium',
+        strength: ticker ? 'high' : 'medium',
         swept_at: new Date().toISOString(),
       });
     });

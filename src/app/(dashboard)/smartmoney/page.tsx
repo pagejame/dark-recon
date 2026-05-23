@@ -29,6 +29,35 @@ interface SmartMoneyAnalysis {
   risk_note: string;
 }
 
+interface CongressSignal {
+  trader: string;
+  chamber: string;
+  note: string;
+  ticker: string;
+  action: 'buy' | 'sell';
+  amount: string;
+  date: string;
+  days_ago: number;
+  urgency: 'immediate' | 'watch' | 'noted';
+  ai_analysis: string;
+}
+
+interface CongressTrackerReport {
+  generated_at: string;
+  active_traders: string[];
+  top_signals: CongressSignal[];
+  sector_focus: string;
+  overall_bias: 'bullish' | 'bearish' | 'mixed';
+  ai_summary: string;
+  follow_plays: {
+    ticker: string;
+    action: string;
+    based_on: string;
+    conviction: 'high' | 'medium' | 'low';
+  }[];
+  cache?: string;
+}
+
 type TradeFilter = 'all' | 'purchases' | 'sales';
 
 function Skeleton({ height = 20 }: { height?: number }) {
@@ -119,6 +148,10 @@ export default function SmartMoneyPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
+  const [congressReport, setCongressReport] = useState<CongressTrackerReport | null>(null);
+  const [trackerLoading, setTrackerLoading] = useState(false);
+  const [trackerError, setTrackerError] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -142,6 +175,26 @@ export default function SmartMoneyPage() {
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  const fetchCongressTracker = useCallback(async (refresh = false) => {
+    setTrackerLoading(true);
+    setTrackerError(null);
+    try {
+      const url = refresh ? '/api/congress-tracker?refresh=true' : '/api/congress-tracker';
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Congress tracker failed');
+      setCongressReport(data);
+    } catch (e) {
+      setTrackerError(e instanceof Error ? e.message : 'Congress tracker failed');
+    } finally {
+      setTrackerLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchCongressTracker();
+  }, [fetchCongressTracker]);
 
   const runAnalysis = async () => {
     if (analysis) return;
@@ -245,6 +298,299 @@ export default function SmartMoneyPage() {
           {error}
         </div>
       )}
+
+      {/* Top 10 Congressional Tracker */}
+      <div style={{ marginBottom: 24 }}>
+        <SectionCard label="TOP 10 CONGRESSIONAL TRACKER" borderColor="#00ff88">
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <button
+              onClick={() => fetchCongressTracker(true)}
+              disabled={trackerLoading}
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 10,
+                letterSpacing: 2,
+                color: '#00ff88',
+                background: '#00ff8815',
+                border: '1px solid #00ff8840',
+                padding: '10px 20px',
+                borderRadius: 6,
+                cursor: trackerLoading ? 'wait' : 'pointer',
+                opacity: trackerLoading ? 0.6 : 1,
+              }}
+            >
+              {trackerLoading ? 'RUNNING…' : 'RUN TRACKER'}
+            </button>
+            {congressReport?.cache && (
+              <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068' }}>
+                {congressReport.cache === 'HIT' ? 'Cached' : congressReport.cache === 'FRESH' ? 'Fresh' : 'Stale cache'}
+              </span>
+            )}
+          </div>
+
+          {trackerError && (
+            <div style={{ color: '#ff8fa0', fontSize: 13, marginBottom: 12 }}>{trackerError}</div>
+          )}
+
+          {trackerLoading && !congressReport ? (
+            <Skeleton height={180} />
+          ) : congressReport ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    letterSpacing: 2,
+                    fontWeight: 700,
+                    color:
+                      congressReport.overall_bias === 'bullish'
+                        ? '#00ff88'
+                        : congressReport.overall_bias === 'bearish'
+                          ? '#ff3d5a'
+                          : '#ffd700',
+                    background:
+                      congressReport.overall_bias === 'bullish'
+                        ? '#00ff8815'
+                        : congressReport.overall_bias === 'bearish'
+                          ? '#ff3d5a15'
+                          : '#ffd70015',
+                    border: `1px solid ${
+                      congressReport.overall_bias === 'bullish'
+                        ? '#00ff8840'
+                        : congressReport.overall_bias === 'bearish'
+                          ? '#ff3d5a40'
+                          : '#ffd70040'
+                    }`,
+                    padding: '6px 14px',
+                    borderRadius: 20,
+                  }}
+                >
+                  {congressReport.overall_bias.toUpperCase()}
+                </span>
+                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#7a8fa8' }}>
+                  {congressReport.sector_focus}
+                </span>
+              </div>
+
+              <p style={{ fontSize: 13, color: '#e8edf5', lineHeight: 1.6, margin: 0 }}>
+                {congressReport.ai_summary}
+              </p>
+
+              {congressReport.follow_plays?.length > 0 && (
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 9,
+                      letterSpacing: 2,
+                      color: '#00ff88',
+                      marginBottom: 12,
+                    }}
+                  >
+                    FOLLOW PLAYS
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {congressReport.follow_plays.map((play, i) => {
+                      const convColor =
+                        play.conviction === 'high'
+                          ? '#00ff88'
+                          : play.conviction === 'medium'
+                            ? '#ffd700'
+                            : '#7a8fa8';
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            background: '#0d1117',
+                            border: '1px solid #1e2a3a',
+                            borderRadius: 8,
+                            padding: '14px 16px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                            <Link
+                              href={`/thesis?ticker=${play.ticker}`}
+                              style={{
+                                fontFamily: 'monospace',
+                                fontSize: 22,
+                                fontWeight: 700,
+                                color: '#ffd700',
+                                textDecoration: 'none',
+                              }}
+                            >
+                              {play.ticker}
+                            </Link>
+                            <span
+                              style={{
+                                fontFamily: 'monospace',
+                                fontSize: 8,
+                                letterSpacing: 1,
+                                color: convColor,
+                                background: `${convColor}15`,
+                                border: `1px solid ${convColor}40`,
+                                padding: '2px 8px',
+                                borderRadius: 20,
+                              }}
+                            >
+                              {play.conviction.toUpperCase()}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 13, color: '#e8edf5', marginBottom: 6 }}>
+                            {play.action}
+                          </div>
+                          <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#3d5068' }}>
+                            Based on: {play.based_on}
+                          </div>
+                          <Link
+                            href={`/thesis?ticker=${play.ticker}`}
+                            style={{
+                              display: 'inline-block',
+                              marginTop: 10,
+                              fontFamily: 'monospace',
+                              fontSize: 9,
+                              letterSpacing: 1,
+                              color: '#3d9aff',
+                              textDecoration: 'none',
+                              border: '1px solid #3d9aff40',
+                              padding: '4px 10px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            BUILD THESIS
+                          </Link>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {congressReport.top_signals?.length > 0 && (
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 9,
+                      letterSpacing: 2,
+                      color: '#ffd700',
+                      marginBottom: 12,
+                    }}
+                  >
+                    TOP SIGNALS
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {congressReport.top_signals.map((signal, i) => {
+                      const urgencyColor =
+                        signal.urgency === 'immediate'
+                          ? '#ff3d5a'
+                          : signal.urgency === 'watch'
+                            ? '#ffd700'
+                            : '#7a8fa8';
+                      const isBuy = signal.action === 'buy';
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            background: '#0d1117',
+                            border: `1px solid ${signal.urgency === 'immediate' ? '#ff3d5a40' : '#1e2a3a'}`,
+                            borderRadius: 8,
+                            padding: '14px 16px',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              alignItems: 'center',
+                              gap: 8,
+                              marginBottom: 8,
+                            }}
+                          >
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#e8edf5' }}>
+                              {signal.trader}
+                            </span>
+                            <span
+                              style={{
+                                fontFamily: 'monospace',
+                                fontSize: 8,
+                                letterSpacing: 1,
+                                color: signal.chamber === 'house' ? '#3d9aff' : '#ff3d5a',
+                                background: signal.chamber === 'house' ? '#3d9aff15' : '#ff3d5a15',
+                                border: `1px solid ${signal.chamber === 'house' ? '#3d9aff40' : '#ff3d5a40'}`,
+                                padding: '2px 8px',
+                                borderRadius: 20,
+                              }}
+                            >
+                              {signal.chamber.toUpperCase()}
+                            </span>
+                            <span
+                              style={{
+                                fontFamily: 'monospace',
+                                fontSize: 8,
+                                letterSpacing: 1,
+                                color: urgencyColor,
+                                background: `${urgencyColor}15`,
+                                border: `1px solid ${urgencyColor}40`,
+                                padding: '2px 8px',
+                                borderRadius: 20,
+                                animation: signal.urgency === 'immediate' ? 'pulse 2s infinite' : undefined,
+                              }}
+                            >
+                              {signal.urgency.toUpperCase()}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                            <Link
+                              href={`/thesis?ticker=${signal.ticker}`}
+                              style={{
+                                fontFamily: 'monospace',
+                                fontSize: 18,
+                                fontWeight: 700,
+                                color: '#ffd700',
+                                textDecoration: 'none',
+                              }}
+                            >
+                              {signal.ticker}
+                            </Link>
+                            <span
+                              style={{
+                                fontFamily: 'monospace',
+                                fontSize: 8,
+                                letterSpacing: 1,
+                                color: isBuy ? '#00ff88' : '#ff3d5a',
+                                background: isBuy ? '#00ff8815' : '#ff3d5a15',
+                                border: `1px solid ${isBuy ? '#00ff8840' : '#ff3d5a40'}`,
+                                padding: '2px 8px',
+                                borderRadius: 20,
+                              }}
+                            >
+                              {isBuy ? 'BUY' : 'SELL'}
+                            </span>
+                            <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#7a8fa8' }}>
+                              {signal.amount}
+                            </span>
+                            <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068' }}>
+                              {signal.days_ago}d ago
+                            </span>
+                          </div>
+                          <p style={{ fontSize: 12, color: '#7a8fa8', lineHeight: 1.5, margin: 0 }}>
+                            {signal.ai_analysis}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#7a8fa8', textAlign: 'center', padding: 24 }}>
+              Run tracker to analyze top 10 congressional traders
+            </div>
+          )}
+        </SectionCard>
+      </div>
 
       {/* Notable Activity */}
       <div style={{ marginBottom: 24 }}>
@@ -610,7 +956,7 @@ export default function SmartMoneyPage() {
         )}
       </SectionCard>
 
-      <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+      <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }`}</style>
     </div>
   );
 }
