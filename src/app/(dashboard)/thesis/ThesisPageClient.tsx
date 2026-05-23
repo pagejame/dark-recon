@@ -105,7 +105,6 @@ export default function ThesisPageClient() {
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeError, setTradeError] = useState<string | null>(null);
-  const [tradeSuccess, setTradeSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/thesis')
@@ -194,11 +193,9 @@ export default function ThesisPageClient() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Order failed');
-      setTradeModalOpen(false);
-      setTradeSuccess('Order submitted');
-      setTimeout(() => setTradeSuccess(null), 3000);
     } catch (e) {
       setTradeError(e instanceof Error ? e.message : 'Order failed');
+      throw e;
     } finally {
       setTradeLoading(false);
     }
@@ -388,11 +385,6 @@ export default function ThesisPageClient() {
           </SectionCard>
 
           {/* Action Row */}
-          {tradeSuccess && (
-            <div style={{ marginBottom: 12, padding: 12, background: '#00ff8815', border: '1px solid #00ff8840', borderRadius: 8, color: '#00ff88', fontFamily: 'monospace', fontSize: 11, letterSpacing: 1 }}>
-              {tradeSuccess}
-            </div>
-          )}
           <div className="mb-8 flex flex-col gap-3 md:flex-row md:gap-3">
             <button onClick={buildThesis} className="w-full rounded-lg border border-border bg-bg-card px-3.5 py-3.5 font-mono text-[10px] tracking-wider text-text-secondary md:flex-1">
               REGENERATE

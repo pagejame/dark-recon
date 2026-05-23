@@ -107,12 +107,11 @@ export default function SignalsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Order failed');
       await updateStatus(tradeSignal.id, 'executed');
-      setTradeModalOpen(false);
-      setTradeSignal(null);
       setTradeSuccess('Order submitted');
       setTimeout(() => setTradeSuccess(null), 3000);
     } catch (e) {
       setTradeError(e instanceof Error ? e.message : 'Order failed');
+      throw e;
     } finally {
       setTradeLoading(false);
     }

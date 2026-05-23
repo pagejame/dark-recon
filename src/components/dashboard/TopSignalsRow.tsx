@@ -67,9 +67,9 @@ export default function TopSignalsRow({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Order failed');
-      setTradeTicker(null);
     } catch (e) {
       setTradeError(e instanceof Error ? e.message : 'Order failed');
+      throw e;
     } finally {
       setTradeLoading(false);
     }

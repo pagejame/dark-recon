@@ -17,6 +17,7 @@ import {
   BarChart2,
   Bell,
   Radio,
+  Trophy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -32,6 +33,7 @@ const navItems = [
   { href: '/thesis', label: 'Thesis Builder', icon: Brain },
   { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
   { href: '/analytics', label: 'Analytics', icon: BarChart2 },
+  { href: '/scoreboard', label: 'Scoreboard', icon: Trophy },
   { href: '/alerts', label: 'Alerts', icon: Bell },
   { href: '/journal', label: 'Trade Journal', icon: BookOpen },
   { href: '/settings', label: 'Settings', icon: Settings },
