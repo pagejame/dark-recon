@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS = {
   scanner: { auto_scan: true, scan_interval_minutes: 5, min_strength: 'low' },
   briefing: { enabled: true, include_levels: true, include_signals: true },
   notifications: { high_conviction: true, scan_complete: false, briefing_ready: true },
+  email: { weekly_enabled: true, email_address: '' },
 };
 
 export async function GET() {

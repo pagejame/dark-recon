@@ -26,6 +26,11 @@ interface NotificationSettings {
   briefing_ready: boolean;
 }
 
+interface EmailSettings {
+  weekly_enabled: boolean;
+  email_address: string;
+}
+
 const DEFAULT_RISK: RiskSettings = {
   max_position_pct: 5,
   max_options_pct: 15,
@@ -48,6 +53,11 @@ const DEFAULT_NOTIFICATIONS: NotificationSettings = {
   high_conviction: true,
   scan_complete: false,
   briefing_ready: true,
+};
+
+const DEFAULT_EMAIL: EmailSettings = {
+  weekly_enabled: true,
+  email_address: '',
 };
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -203,10 +213,13 @@ export default function SettingsPage() {
   const [scanner, setScanner] = useState<ScannerSettings>(DEFAULT_SCANNER);
   const [briefing, setBriefing] = useState<BriefingSettings>(DEFAULT_BRIEFING);
   const [notifications, setNotifications] = useState<NotificationSettings>(DEFAULT_NOTIFICATIONS);
+  const [email, setEmail] = useState<EmailSettings>(DEFAULT_EMAIL);
 
   const [savedSection, setSavedSection] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [testEmailLoading, setTestEmailLoading] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -217,6 +230,7 @@ export default function SettingsPage() {
       if (data.scanner) setScanner({ ...DEFAULT_SCANNER, ...data.scanner });
       if (data.briefing) setBriefing({ ...DEFAULT_BRIEFING, ...data.briefing });
       if (data.notifications) setNotifications({ ...DEFAULT_NOTIFICATIONS, ...data.notifications });
+      if (data.email) setEmail({ ...DEFAULT_EMAIL, ...data.email });
     } catch {
       // defaults remain
     } finally {
@@ -248,6 +262,25 @@ export default function SettingsPage() {
     }
   };
 
+  const sendTestEmail = async () => {
+    setTestEmailLoading(true);
+    setTestEmailResult(null);
+    try {
+      const res = await fetch('/api/email/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.email_address || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Test email failed');
+      setTestEmailResult(data.message);
+    } catch (e) {
+      setTestEmailResult(e instanceof Error ? e.message : 'Test email failed');
+    } finally {
+      setTestEmailLoading(false);
+    }
+  };
+
   const maxSingleTrade = (risk.weekly_contribution * risk.max_position_pct) / 100;
 
   const SaveButton = ({ sectionKey }: { sectionKey: string }) => (
@@ -259,6 +292,7 @@ export default function SettingsPage() {
           else if (sectionKey === 'scanner') saveSection('scanner', scanner);
           else if (sectionKey === 'briefing') saveSection('briefing', briefing);
           else if (sectionKey === 'notifications') saveSection('notifications', notifications);
+          else if (sectionKey === 'email') saveSection('email', email);
         }}
         disabled={saving === sectionKey}
         style={{
@@ -504,6 +538,76 @@ export default function SettingsPage() {
               />
             </SettingRow>
             <SaveButton sectionKey="notifications" />
+          </SectionCard>
+
+          {/* Email Notifications */}
+          <SectionCard label="EMAIL NOTIFICATIONS" borderColor="#3d9aff" className="md:col-span-2">
+            <p style={{ fontSize: 13, color: '#7a8fa8', margin: '0 0 16px', lineHeight: 1.6 }}>
+              Weekly performance summary sent every Sunday morning
+            </p>
+            <SettingRow label="Email Address" description="Where weekly reports are delivered">
+              <input
+                type="email"
+                value={email.email_address}
+                onChange={(e) => setEmail({ ...email, email_address: e.target.value })}
+                placeholder="you@example.com"
+                style={{ ...inputStyle, maxWidth: 240 }}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Weekly Performance Email"
+              description="Automated Sunday morning week-in-review"
+            >
+              <Toggle
+                value={email.weekly_enabled}
+                onChange={(v) => setEmail({ ...email, weekly_enabled: v })}
+              />
+            </SettingRow>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => void sendTestEmail()}
+                disabled={testEmailLoading}
+                style={{
+                  padding: '10px 20px',
+                  background: testEmailLoading ? '#1e2a3a' : '#3d9aff15',
+                  color: testEmailLoading ? '#7a8fa8' : '#3d9aff',
+                  border: '1px solid #3d9aff40',
+                  borderRadius: 8,
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  letterSpacing: 2,
+                  fontWeight: 700,
+                  cursor: testEmailLoading ? 'wait' : 'pointer',
+                }}
+              >
+                {testEmailLoading ? 'SENDING…' : 'SEND TEST EMAIL'}
+              </button>
+              {testEmailResult && (
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: testEmailResult.includes('sent') ? '#00ff88' : '#ff8fa0',
+                  }}
+                >
+                  {testEmailResult}
+                </span>
+              )}
+            </div>
+            <div
+              style={{
+                marginTop: 16,
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: '#3d5068',
+                lineHeight: 1.6,
+              }}
+            >
+              Emails sent from autopilot@dark-recon.com via Resend. Verify dark-recon.com in Resend
+              and add DNS records in Vercel.
+            </div>
+            <SaveButton sectionKey="email" />
           </SectionCard>
 
           {/* Account */}
