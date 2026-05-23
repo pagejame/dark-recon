@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/morning-run",
+      "schedule": "0 10 * * 1-5"
+    },
+    {
+      "path": "/api/cron/alert-check",
+      "schedule": "*/15 13-21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/intelligence-sweep",
+      "schedule": "0 12,16,20 * * 1-5"
+    }
+  ]
+}
