@@ -3,6 +3,7 @@ import { getEarningsCalendar, type EarningsCalendarEvent } from '@/lib/api/finnh
 import { getAccount, getPositions, getOrders } from '@/lib/api/alpaca';
 import { getNotableTraderActivity, getTopCongressionalTickers } from '@/lib/api/smartmoney';
 import type { CongressionalTrade } from '@/lib/api/smartmoney';
+import { runIntelligenceSweep, type IntelligenceSignal } from '@/lib/agents/intelligence';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -82,6 +83,7 @@ export async function runAutopilot(): Promise<AutopilotReport> {
     ordersResult,
     notableTradesResult,
     topCongressTickersResult,
+    intelResult,
   ] = await Promise.allSettled([
     getEarningsCalendar(7),
     getAccount(),
@@ -89,6 +91,7 @@ export async function runAutopilot(): Promise<AutopilotReport> {
     getOrders('all', 20),
     getNotableTraderActivity(),
     getTopCongressionalTickers(5),
+    runIntelligenceSweep(),
   ]);
 
   const earnings =
@@ -110,6 +113,10 @@ export async function runAutopilot(): Promise<AutopilotReport> {
   const topCongressTickers =
     topCongressTickersResult.status === 'fulfilled'
       ? topCongressTickersResult.value
+      : [];
+  const intelSignals =
+    intelResult.status === 'fulfilled'
+      ? (intelResult.value as IntelligenceSignal[])
       : [];
 
   const earningsContext =
@@ -166,6 +173,15 @@ Buying Power: $${parseFloat(account.buying_power || '0').toLocaleString()}
           .join(', ')
       : 'No data';
 
+  const intelContext =
+    intelSignals.length > 0
+      ? intelSignals
+          .filter((s) => s.strength === 'high')
+          .slice(0, 5)
+          .map((s) => `[${s.source}] ${s.headline} — ${s.summary}`)
+          .join('\n')
+      : 'No high-strength intelligence signals detected';
+
   const prompt = `You are Dark Recon's Autopilot Agent — an elite autonomous trading intelligence system. Today is ${today} (${dayOfWeek}). Market is currently ${isMarketOpen ? 'OPEN' : 'CLOSED'}.
 
 Generate a complete autonomous daily action plan based on this real data:
@@ -187,6 +203,9 @@ ${notableTradesContext}
 
 TOP CONGRESS TICKERS (90 days):
 ${topCongressTickersContext}
+
+WEB INTELLIGENCE SWEEP (pre-priced signals from Reddit, SEC, news):
+${intelContext}
 
 Respond with ONLY a valid JSON object. No text before or after. No markdown. Start with { end with }.
 
@@ -234,7 +253,9 @@ Respond with ONLY a valid JSON object. No text before or after. No markdown. Sta
 
 Base all analysis on the real portfolio and market data provided. Be specific, direct, and actionable. No generic advice.
 
-Cross-reference congressional activity with your portfolio and watchlist. If congress members are buying tickers you hold or are watching, weight those recommendations higher. Note any alignment between congressional purchases and your open positions.`;
+Cross-reference congressional activity with your portfolio and watchlist. If congress members are buying tickers you hold or are watching, weight those recommendations higher. Note any alignment between congressional purchases and your open positions.
+
+Factor web intelligence sweep signals into your recommendations. If a ticker appears in both your portfolio/watchlist AND the intelligence sweep, weight it heavily in your action plan.`;
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',

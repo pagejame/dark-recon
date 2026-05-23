@@ -16,6 +16,7 @@ import {
   TrendingUp,
   BarChart2,
   Bell,
+  Radio,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -24,6 +25,7 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/autopilot', label: 'Autopilot', icon: Bot },
   { href: '/smartmoney', label: 'Smart Money', icon: TrendingUp },
+  { href: '/intelligence', label: 'Intelligence', icon: Radio },
   { href: '/recon', label: 'Recon Feed', icon: Radar },
   { href: '/signals', label: 'Signals', icon: Zap },
   { href: '/earnings', label: 'Earnings', icon: Calendar },
