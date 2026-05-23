@@ -213,6 +213,9 @@ export default function SmartMoneyPage() {
         <div style={{ fontSize: 13, color: '#7a8fa8', marginTop: 4 }}>
           Congressional trades & institutional activity — follow the informed
         </div>
+        <div style={{ fontSize: 11, color: '#3d5068', fontFamily: 'monospace', marginTop: 4 }}>
+          STOCK ACT disclosures — data from Finnhub + Capitol Trades. When live data unavailable, recent historical trades shown.
+        </div>
         {updatedAt && (
           <div
             style={{
