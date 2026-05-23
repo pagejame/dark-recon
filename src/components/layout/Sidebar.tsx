@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
+  Bot,
   Radar,
   Zap,
   Calendar,
@@ -21,6 +22,7 @@ import { useState } from 'react';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/autopilot', label: 'Autopilot', icon: Bot },
   { href: '/recon', label: 'Recon Feed', icon: Radar },
   { href: '/signals', label: 'Signals', icon: Zap },
   { href: '/earnings', label: 'Earnings', icon: Calendar },

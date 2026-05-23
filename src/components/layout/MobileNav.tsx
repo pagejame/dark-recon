@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard,
+  Bot,
   Zap,
   Brain,
   TrendingUp,
@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/autopilot', label: 'Autopilot', icon: Bot },
   { href: '/signals', label: 'Signals', icon: Zap },
   { href: '/thesis', label: 'Thesis', icon: Brain },
   { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },

@@ -46,6 +46,13 @@ interface TriggeredAlert {
   current_price?: number;
 }
 
+interface AutopilotPreview {
+  overall_action: 'aggressive' | 'moderate' | 'defensive' | 'hold';
+  report_text: string;
+  action_items: { priority: string; action: string; ticker?: string }[];
+  generated_at: string;
+}
+
 export default function DashboardContent() {
   const [signals, setSignals] = useState<ScanResult[]>([]);
   const [briefing, setBriefing] = useState<MorningBriefingData | null>(null);
@@ -55,6 +62,9 @@ export default function DashboardContent() {
   const [thesesToday, setThesesToday] = useState(0);
   const [tradeCount, setTradeCount] = useState(0);
   const [triggeredAlerts, setTriggeredAlerts] = useState<TriggeredAlert[]>([]);
+  const [autopilot, setAutopilot] = useState<AutopilotPreview | null>(null);
+  const [autopilotLoading, setAutopilotLoading] = useState(false);
+  const [autopilotRunning, setAutopilotRunning] = useState(false);
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -200,6 +210,22 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const fetchAutopilot = useCallback(async (refresh = false) => {
+    if (refresh) setAutopilotRunning(true);
+    else setAutopilotLoading(true);
+    try {
+      const url = refresh ? '/api/autopilot?refresh=true' : '/api/autopilot';
+      const res = await fetch(url);
+      const data = await res.json();
+      if (res.ok && !data.error) setAutopilot(data);
+    } catch {
+      // non-blocking
+    } finally {
+      setAutopilotLoading(false);
+      setAutopilotRunning(false);
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void Promise.allSettled([
       fetchBriefing(),
@@ -209,6 +235,7 @@ export default function DashboardContent() {
       fetchEarnings(),
       fetchAgentStats(),
       checkAlerts(),
+      fetchAutopilot(),
     ]);
   }, [
     fetchBriefing,
@@ -218,6 +245,7 @@ export default function DashboardContent() {
     fetchEarnings,
     fetchAgentStats,
     checkAlerts,
+    fetchAutopilot,
   ]);
 
   useEffect(() => {
@@ -299,6 +327,18 @@ export default function DashboardContent() {
 
   const spySignal = signals.find((s) => s.ticker === 'SPY');
 
+  const autopilotActionColors: Record<string, { color: string; bg: string; border: string }> = {
+    aggressive: { color: '#00ff88', bg: '#00ff8815', border: '#00ff8840' },
+    moderate: { color: '#3d9aff', bg: '#3d9aff15', border: '#3d9aff40' },
+    defensive: { color: '#ffd700', bg: '#ffd70015', border: '#ffd70040' },
+    hold: { color: '#7a8fa8', bg: '#7a8fa815', border: '#7a8fa840' },
+  };
+
+  const autopilotPreview =
+    autopilot?.report_text?.split('\n\n')[0]?.replace(/^AUTOPILOT —[^\n]*\n?/, '') || '';
+  const autopilotTruncated =
+    autopilotPreview.length > 200 ? `${autopilotPreview.slice(0, 200)}…` : autopilotPreview;
+
   return (
     <div className="flex flex-col gap-4">
       <MarketStatusBar briefing={briefing} earnings={earnings} spyDisplay={spySignal ? `SPY · ${spySignal.summary.slice(0, 30)}…` : undefined} />
@@ -375,6 +415,121 @@ export default function DashboardContent() {
             regenerating={briefingRegenerating}
           />
         </div>
+      </div>
+
+      {/* Autopilot Preview */}
+      <div
+        style={{
+          background: '#111620',
+          border: '1px solid #1e2a3a',
+          borderLeft: '3px solid #00ff88',
+          borderRadius: 10,
+          padding: '16px 20px',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 9,
+                letterSpacing: 3,
+                color: '#00ff88',
+              }}
+            >
+              AUTOPILOT
+            </span>
+            {autopilot && (
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 1,
+                  color: autopilotActionColors[autopilot.overall_action]?.color || '#7a8fa8',
+                  background: autopilotActionColors[autopilot.overall_action]?.bg,
+                  border: `1px solid ${autopilotActionColors[autopilot.overall_action]?.border}`,
+                  padding: '2px 10px',
+                  borderRadius: 20,
+                }}
+              >
+                {autopilot.overall_action.toUpperCase()}
+              </span>
+            )}
+          </div>
+          <a
+            href="/autopilot"
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 9,
+              color: '#00ff88',
+              letterSpacing: 1,
+              textDecoration: 'none',
+            }}
+          >
+            View Full Report →
+          </a>
+        </div>
+
+        {autopilotLoading ? (
+          <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#3d5068' }}>Loading…</div>
+        ) : autopilot ? (
+          <>
+            <p style={{ fontSize: 13, color: '#7a8fa8', lineHeight: 1.6, margin: '0 0 12px' }}>
+              {autopilotTruncated}
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {(autopilot.action_items || []).slice(0, 2).map((item, i) => (
+                <span
+                  key={i}
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    color: '#e8edf5',
+                    background: '#0d1117',
+                    border: '1px solid #1e2a3a',
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                  }}
+                >
+                  {item.ticker ? `${item.ticker}: ` : ''}
+                  {item.action}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, color: '#7a8fa8' }}>
+              Run Autopilot to get your daily action plan
+            </span>
+            <button
+              onClick={() => fetchAutopilot(true)}
+              disabled={autopilotRunning}
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 9,
+                letterSpacing: 2,
+                color: '#00ff88',
+                background: '#00ff8815',
+                border: '1px solid #00ff8840',
+                padding: '6px 14px',
+                borderRadius: 6,
+                cursor: autopilotRunning ? 'wait' : 'pointer',
+              }}
+            >
+              {autopilotRunning ? 'RUNNING…' : 'RUN'}
+            </button>
+          </div>
+        )}
       </div>
 
       <TopSignalsRow
