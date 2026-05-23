@@ -11,6 +11,11 @@ export interface AutopilotReport {
   market_sentiment: string;
   overall_action: 'aggressive' | 'moderate' | 'defensive' | 'hold';
   report_text: string;
+  market_assessment?: string;
+  portfolio_assessment?: string;
+  opportunities_assessment?: string;
+  risk_assessment?: string;
+  game_plan?: string;
   action_items: {
     priority: 'high' | 'medium' | 'low';
     action: string;
@@ -147,23 +152,16 @@ Respond with ONLY a valid JSON object. No text before or after. No markdown. Sta
   "date": "${today}",
   "market_sentiment": "risk_on",
   "overall_action": "moderate",
-  "report_text": "AUTOPILOT — ${today}\\n\\n[Paragraph 1: Overall market assessment for today — be specific about conditions, what to watch, macro risks. 3-4 sentences.]\\n\\n[Paragraph 2: Portfolio review — assess each open position, what to do with it today. Be direct: hold, add, or trim.]\\n\\n[Paragraph 3: Top opportunities — 2-3 specific tickers worth analyzing today with specific reasons why now.]\\n\\n[Paragraph 4: Risk flags — what could go wrong today and how to protect the portfolio. Be specific.]\\n\\n[Paragraph 5: Today's game plan — one clear sentence per action. Maximum 4 actions. Prioritized.]",
+  "market_assessment": "3-4 sentences about overall market conditions today. Be specific.",
+  "portfolio_assessment": "2-3 sentences reviewing open positions and what to do with them today.",
+  "opportunities_assessment": "2-3 sentences about top 2-3 tickers worth investigating today.",
+  "risk_assessment": "2-3 sentences about key risks and how to protect the portfolio.",
+  "game_plan": "4 specific one-sentence actions to take today, separated by | character.",
   "action_items": [
     {
       "priority": "high",
-      "action": "Specific action to take today",
+      "action": "Specific action",
       "ticker": "NVDA",
-      "rationale": "Specific reason based on real data above"
-    },
-    {
-      "priority": "medium", 
-      "action": "Second action",
-      "ticker": "QQQ",
-      "rationale": "Specific reason"
-    },
-    {
-      "priority": "low",
-      "action": "Third action",
       "rationale": "Specific reason"
     }
   ],
@@ -171,7 +169,7 @@ Respond with ONLY a valid JSON object. No text before or after. No markdown. Sta
     {
       "ticker": "NVDA",
       "recommendation": "hold",
-      "rationale": "Specific rationale based on current P&L and market conditions",
+      "rationale": "Specific rationale",
       "current_pnl_pct": 0.21
     }
   ],
@@ -185,7 +183,7 @@ Respond with ONLY a valid JSON object. No text before or after. No markdown. Sta
   ],
   "risk_flags": [
     {
-      "flag": "Specific risk to watch today",
+      "flag": "Specific risk to watch",
       "severity": "medium"
     }
   ],
@@ -196,7 +194,7 @@ Base all analysis on the real portfolio and market data provided. Be specific, d
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
+    max_tokens: 4000,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -212,5 +210,27 @@ Base all analysis on the real portfolio and market data provided. Be specific, d
     throw new Error('Invalid autopilot response');
   }
 
-  return JSON.parse(rawText.slice(start, end + 1)) as AutopilotReport;
+  const parsed = JSON.parse(rawText.slice(start, end + 1)) as AutopilotReport;
+
+  parsed.report_text = [
+    `AUTOPILOT — ${parsed.date}`,
+    '',
+    parsed.market_assessment || '',
+    '',
+    parsed.portfolio_assessment || '',
+    '',
+    parsed.opportunities_assessment || '',
+    '',
+    parsed.risk_assessment || '',
+    '',
+    parsed.game_plan
+      ? "TODAY'S GAME PLAN:\n" +
+        parsed.game_plan
+          .split('|')
+          .map((a: string) => '• ' + a.trim())
+          .join('\n')
+      : '',
+  ].join('\n');
+
+  return parsed;
 }
