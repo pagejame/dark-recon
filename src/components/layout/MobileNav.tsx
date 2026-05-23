@@ -3,20 +3,20 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  LayoutDashboard,
   Bot,
   Zap,
   TrendingUp,
-  Bell,
-  LineChart,
+  Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/autopilot', label: 'Autopilot', icon: Bot },
-  { href: '/strategy', label: 'Strategy', icon: LineChart },
-  { href: '/signals', label: 'Signals', icon: Zap },
   { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
-  { href: '/alerts', label: 'Alerts', icon: Bell },
+  { href: '/signals', label: 'Signals', icon: Zap },
+  { href: '/options', label: 'Options', icon: Layers },
 ];
 
 export default function MobileNav() {

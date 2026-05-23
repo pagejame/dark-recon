@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import TradeModal from '@/components/trading/TradeModal';
+import OptionsChain from '@/components/options/OptionsChain';
 
 interface Signal {
   id: string;
@@ -49,6 +50,7 @@ export default function SignalsPage() {
   const [tradeSignal, setTradeSignal] = useState<Signal | null>(null);
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeError, setTradeError] = useState<string | null>(null);
+  const [optionsChainSignalId, setOptionsChainSignalId] = useState<string | null>(null);
   const [tradeSuccess, setTradeSuccess] = useState<string | null>(null);
 
   const fetchSignals = useCallback(async () => {
@@ -481,7 +483,46 @@ export default function SignalsPage() {
                       >
                         ◆ EXECUTE TRADE
                       </button>
+                      <button
+                        onClick={() =>
+                          setOptionsChainSignalId(
+                            optionsChainSignalId === signal.id ? null : signal.id
+                          )
+                        }
+                        style={{
+                          padding: '6px 14px',
+                          background: '#3d9aff20',
+                          border: '1px solid #3d9aff60',
+                          borderRadius: 8,
+                          color: '#3d9aff',
+                          fontFamily: 'monospace',
+                          fontSize: 9,
+                          letterSpacing: 1,
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                        }}
+                      >
+                        ◆ OPTIONS CHAIN
+                      </button>
                     </div>
+                    {optionsChainSignalId === signal.id && (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          padding: 16,
+                          background: '#0d1117',
+                          border: '1px solid #1e2a3a',
+                          borderRadius: 8,
+                        }}
+                      >
+                        <OptionsChain
+                          ticker={signal.ticker}
+                          suggestedType={
+                            signal.signal_type === 'reversal_candidate' ? 'put' : 'call'
+                          }
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

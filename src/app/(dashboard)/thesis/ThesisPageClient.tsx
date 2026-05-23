@@ -3,6 +3,7 @@
 import { useState, useEffect, type ReactNode, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import TradeModal from '@/components/trading/TradeModal';
+import OptionsChain from '@/components/options/OptionsChain';
 
 interface ThesisResult {
   ticker: string;
@@ -105,6 +106,7 @@ export default function ThesisPageClient() {
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeError, setTradeError] = useState<string | null>(null);
+  const [showOptionsChain, setShowOptionsChain] = useState(false);
 
   useEffect(() => {
     fetch('/api/thesis')
@@ -383,6 +385,65 @@ export default function ThesisPageClient() {
             <div style={{ fontSize: 16, color: '#e8edf5', lineHeight: 1.7 }}>{thesis.dark_recon_verdict}</div>
             <div style={{ marginTop: 10, fontSize: 12, color: '#7a8fa8' }}>News: {thesis.news_sentiment} · Insider: {thesis.insider_activity}</div>
           </SectionCard>
+
+          {/* Options Chain */}
+          <div
+            style={{
+              background: '#111620',
+              border: '1px solid #1e2a3a',
+              borderLeft: '3px solid #3d9aff',
+              borderRadius: 10,
+              overflow: 'hidden',
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                padding: '14px 20px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+              }}
+              onClick={() => setShowOptionsChain(!showOptionsChain)}
+            >
+              <div>
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    letterSpacing: 3,
+                    color: '#3d9aff',
+                    marginBottom: 4,
+                  }}
+                >
+                  OPTIONS CHAIN
+                </div>
+                <div style={{ fontSize: 13, color: '#7a8fa8' }}>
+                  {thesis.options_setup.recommended_play} · View live strikes and execute
+                </div>
+              </div>
+              <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#3d9aff' }}>
+                {showOptionsChain ? '▲ COLLAPSE' : '▼ EXPAND'}
+              </div>
+            </div>
+            {showOptionsChain && (
+              <div style={{ padding: '0 20px 20px', borderTop: '1px solid #1e2a3a' }}>
+                <div style={{ marginTop: 16 }}>
+                  <OptionsChain
+                    ticker={thesis.ticker}
+                    suggestedType={thesis.overall_direction === 'bullish' ? 'call' : 'put'}
+                    suggestedStrike={
+                      thesis.options_setup.strike
+                        ? parseFloat(thesis.options_setup.strike.replace('$', '').replace(',', ''))
+                        : undefined
+                    }
+                    suggestedExpiry={undefined}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Action Row */}
           <div className="mb-8 flex flex-col gap-3 md:flex-row md:gap-3">

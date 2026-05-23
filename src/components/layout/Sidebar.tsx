@@ -19,6 +19,7 @@ import {
   Radio,
   Trophy,
   LineChart,
+  Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -33,6 +34,7 @@ const navItems = [
   { href: '/signals', label: 'Signals', icon: Zap },
   { href: '/earnings', label: 'Earnings', icon: Calendar },
   { href: '/thesis', label: 'Thesis Builder', icon: Brain },
+  { href: '/options', label: 'Options', icon: Layers },
   { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
   { href: '/analytics', label: 'Analytics', icon: BarChart2 },
   { href: '/scoreboard', label: 'Scoreboard', icon: Trophy },
