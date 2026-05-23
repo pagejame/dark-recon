@@ -8,6 +8,7 @@ import { runMarketScan } from '@/lib/agents/scanner';
 import { runAutopilot } from '@/lib/agents/autopilot';
 import { saveBriefing } from '@/lib/db/briefings';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { takeStrategySnapshot } from '@/lib/services/strategy';
 
 export const maxDuration = 60;
 
@@ -22,10 +23,11 @@ export async function GET(request: NextRequest) {
 
   console.log('Dark Recon morning run starting...');
 
-  const [briefingResult, scanResult, autopilotResult] = await Promise.allSettled([
+  const [briefingResult, scanResult, autopilotResult, snapshotResult] = await Promise.allSettled([
     generateMorningBriefing(),
     runMarketScan(),
     runAutopilot(),
+    takeStrategySnapshot(),
   ]);
 
   if (briefingResult.status === 'fulfilled') {
@@ -91,6 +93,13 @@ export async function GET(request: NextRequest) {
   } else {
     results.autopilot = 'FAILED';
     console.error('Autopilot failed:', autopilotResult.reason);
+  }
+
+  if (snapshotResult.status === 'fulfilled') {
+    results.strategy_snapshot = 'SUCCESS';
+  } else {
+    results.strategy_snapshot = 'FAILED';
+    console.error('Strategy snapshot failed:', snapshotResult.reason);
   }
 
   try {

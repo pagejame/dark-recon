@@ -5,6 +5,7 @@ import { getNotableTraderActivity, getTopCongressionalTickers } from '@/lib/api/
 import type { CongressionalTrade } from '@/lib/api/smartmoney';
 import { runIntelligenceSweep, type IntelligenceSignal } from '@/lib/agents/intelligence';
 import { runCongressTracker } from '@/lib/agents/congress-tracker';
+import { getStrategyConfig, getStrategyPerformance } from '@/lib/services/strategy';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -86,6 +87,8 @@ export async function runAutopilot(): Promise<AutopilotReport> {
     topCongressTickersResult,
     intelResult,
     congressResult,
+    strategyConfigResult,
+    strategyPerfResult,
   ] = await Promise.allSettled([
     getEarningsCalendar(7),
     getAccount(),
@@ -95,6 +98,8 @@ export async function runAutopilot(): Promise<AutopilotReport> {
     getTopCongressionalTickers(5),
     runIntelligenceSweep(),
     runCongressTracker(),
+    getStrategyConfig(),
+    getStrategyPerformance(),
   ]);
 
   const earnings =
@@ -123,6 +128,10 @@ export async function runAutopilot(): Promise<AutopilotReport> {
       : [];
   const congressReport =
     congressResult.status === 'fulfilled' ? congressResult.value : null;
+  const strategyConfig =
+    strategyConfigResult.status === 'fulfilled' ? strategyConfigResult.value : null;
+  const strategyPerf =
+    strategyPerfResult.status === 'fulfilled' ? strategyPerfResult.value : null;
 
   const earningsContext =
     earnings
@@ -191,6 +200,10 @@ Buying Power: $${parseFloat(account.buying_power || '0').toLocaleString()}
     ? `Congressional Top 10 Bias: ${congressReport.overall_bias?.toUpperCase()}\nSector Focus: ${congressReport.sector_focus}\n${congressReport.ai_summary}\nTop Follow Plays: ${congressReport.follow_plays?.slice(0, 3).map((p) => `${p.ticker} — ${p.action}`).join(', ')}`
     : 'No congressional tracking data available';
 
+  const strategyContext = strategyConfig
+    ? `Strategy: ${strategyConfig.name}\nMax Positions: ${strategyConfig.max_positions}\nMax Position Size: ${strategyConfig.max_position_pct}%\nMin Conviction: ${strategyConfig.min_conviction_score}/10\nRebalance: ${strategyConfig.rebalance_frequency}\nTotal Return: ${strategyPerf?.total_return_pct?.toFixed(2) ?? '0'}%\nAlpha vs ${strategyConfig.benchmark_ticker}: ${strategyPerf?.alpha?.toFixed(2) ?? '0'}%\nOpen Positions: ${strategyPerf?.positions_count ?? 0}/${strategyConfig.max_positions}`
+    : 'No strategy configuration available';
+
   const prompt = `You are Dark Recon's Autopilot Agent — an elite autonomous trading intelligence system. Today is ${today} (${dayOfWeek}). Market is currently ${isMarketOpen ? 'OPEN' : 'CLOSED'}.
 
 Generate a complete autonomous daily action plan based on this real data:
@@ -218,6 +231,9 @@ ${intelContext}
 
 CONGRESSIONAL TOP 10 INTELLIGENCE:
 ${congressContext}
+
+STRATEGY RULES & PERFORMANCE:
+${strategyContext}
 
 Respond with ONLY a valid JSON object. No text before or after. No markdown. Start with { end with }.
 
@@ -269,7 +285,9 @@ Cross-reference congressional activity with your portfolio and watchlist. If con
 
 Factor web intelligence sweep signals into your recommendations. If a ticker appears in both your portfolio/watchlist AND the intelligence sweep, weight it heavily in your action plan.
 
-If congressional follow plays align with your portfolio or watchlist tickers, weight those positions or opportunities higher in your recommendations.`;
+If congressional follow plays align with your portfolio or watchlist tickers, weight those positions or opportunities higher in your recommendations.
+
+Respect strategy rules: do not recommend exceeding max positions (${strategyConfig?.max_positions ?? 10}) or max position size (${strategyConfig?.max_position_pct ?? 10}%). Only recommend trades meeting minimum conviction score (${strategyConfig?.min_conviction_score ?? 6}/10).`;
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',

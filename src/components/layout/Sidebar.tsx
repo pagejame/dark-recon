@@ -18,6 +18,7 @@ import {
   Bell,
   Radio,
   Trophy,
+  LineChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -25,6 +26,7 @@ import { useState } from 'react';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/autopilot', label: 'Autopilot', icon: Bot },
+  { href: '/strategy', label: 'Strategy', icon: LineChart },
   { href: '/smartmoney', label: 'Smart Money', icon: TrendingUp },
   { href: '/intelligence', label: 'Intelligence', icon: Radio },
   { href: '/recon', label: 'Recon Feed', icon: Radar },

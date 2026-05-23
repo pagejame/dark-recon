@@ -7,14 +7,14 @@ import {
   Zap,
   TrendingUp,
   Bell,
-  Radio,
+  LineChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/autopilot', label: 'Autopilot', icon: Bot },
+  { href: '/strategy', label: 'Strategy', icon: LineChart },
   { href: '/signals', label: 'Signals', icon: Zap },
-  { href: '/intelligence', label: 'Intel', icon: Radio },
   { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
   { href: '/alerts', label: 'Alerts', icon: Bell },
 ];
