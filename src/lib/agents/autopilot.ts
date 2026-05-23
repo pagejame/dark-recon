@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getEarningsCalendar, type EarningsCalendarEvent } from '@/lib/api/finnhub';
 import { getAccount, getPositions, getOrders } from '@/lib/api/alpaca';
+import { getNotableTraderActivity, getTopCongressionalTickers } from '@/lib/api/smartmoney';
+import type { CongressionalTrade } from '@/lib/api/smartmoney';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -73,13 +75,21 @@ export async function runAutopilot(): Promise<AutopilotReport> {
     return d >= 1 && d <= 5 && h >= 9 && h < 16;
   })();
 
-  const [earningsResult, accountResult, positionsResult, ordersResult] =
-    await Promise.allSettled([
-      getEarningsCalendar(7),
-      getAccount(),
-      getPositions(),
-      getOrders('all', 20),
-    ]);
+  const [
+    earningsResult,
+    accountResult,
+    positionsResult,
+    ordersResult,
+    notableTradesResult,
+    topCongressTickersResult,
+  ] = await Promise.allSettled([
+    getEarningsCalendar(7),
+    getAccount(),
+    getPositions(),
+    getOrders('all', 20),
+    getNotableTraderActivity(),
+    getTopCongressionalTickers(5),
+  ]);
 
   const earnings =
     earningsResult.status === 'fulfilled'
@@ -93,6 +103,14 @@ export async function runAutopilot(): Promise<AutopilotReport> {
       : [];
   const orders =
     ordersResult.status === 'fulfilled' ? (ordersResult.value as AlpacaOrder[]) : [];
+  const notableTrades =
+    notableTradesResult.status === 'fulfilled'
+      ? (notableTradesResult.value as CongressionalTrade[])
+      : [];
+  const topCongressTickers =
+    topCongressTickersResult.status === 'fulfilled'
+      ? topCongressTickersResult.value
+      : [];
 
   const earningsContext =
     earnings
@@ -130,6 +148,24 @@ Buying Power: $${parseFloat(account.buying_power || '0').toLocaleString()}
       .map((o) => `${o.side.toUpperCase()} ${o.qty} ${o.symbol} @ $${o.filled_avg_price}`)
       .join('\n') || 'No recent trades';
 
+  const notableTradesContext =
+    notableTrades.length > 0
+      ? notableTrades
+          .slice(0, 5)
+          .map(
+            (t) =>
+              `${t.representative}: ${t.type} ${t.ticker} (${t.amount}) on ${t.transaction_date}`
+          )
+          .join('\n')
+      : 'No notable congressional trades in last 90 days';
+
+  const topCongressTickersContext =
+    topCongressTickers.length > 0
+      ? topCongressTickers
+          .map((t) => `${t.ticker}: ${t.buys} buys ${t.sells} sells`)
+          .join(', ')
+      : 'No data';
+
   const prompt = `You are Dark Recon's Autopilot Agent — an elite autonomous trading intelligence system. Today is ${today} (${dayOfWeek}). Market is currently ${isMarketOpen ? 'OPEN' : 'CLOSED'}.
 
 Generate a complete autonomous daily action plan based on this real data:
@@ -145,6 +181,12 @@ ${recentTradesContext}
 
 UPCOMING EARNINGS CATALYSTS:
 ${earningsContext}
+
+CONGRESSIONAL SMART MONEY (recent notable trades):
+${notableTradesContext}
+
+TOP CONGRESS TICKERS (90 days):
+${topCongressTickersContext}
 
 Respond with ONLY a valid JSON object. No text before or after. No markdown. Start with { end with }.
 
@@ -190,7 +232,9 @@ Respond with ONLY a valid JSON object. No text before or after. No markdown. Sta
   "generated_at": "${new Date().toISOString()}"
 }
 
-Base all analysis on the real portfolio and market data provided. Be specific, direct, and actionable. No generic advice.`;
+Base all analysis on the real portfolio and market data provided. Be specific, direct, and actionable. No generic advice.
+
+Cross-reference congressional activity with your portfolio and watchlist. If congress members are buying tickers you hold or are watching, weight those recommendations higher. Note any alignment between congressional purchases and your open positions.`;
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',

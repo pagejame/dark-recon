@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation';
 import {
   Bot,
   Zap,
-  Brain,
   TrendingUp,
   Bell,
 } from 'lucide-react';
@@ -14,7 +13,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { href: '/autopilot', label: 'Autopilot', icon: Bot },
   { href: '/signals', label: 'Signals', icon: Zap },
-  { href: '/thesis', label: 'Thesis', icon: Brain },
+  { href: '/smartmoney', label: 'Smart Money', icon: TrendingUp },
   { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
   { href: '/alerts', label: 'Alerts', icon: Bell },
 ];
