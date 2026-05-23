@@ -176,12 +176,11 @@ export default function SmartMoneyPage() {
     void fetchData();
   }, [fetchData]);
 
-  const fetchCongressTracker = useCallback(async (refresh = false) => {
+  const fetchCongressTracker = useCallback(async () => {
     setTrackerLoading(true);
     setTrackerError(null);
     try {
-      const url = refresh ? '/api/congress-tracker?refresh=true' : '/api/congress-tracker';
-      const res = await fetch(url);
+      const res = await fetch('/api/congress-tracker?refresh=true');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Congress tracker failed');
       setCongressReport(data);
@@ -191,10 +190,6 @@ export default function SmartMoneyPage() {
       setTrackerLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    void fetchCongressTracker();
-  }, [fetchCongressTracker]);
 
   const runAnalysis = async () => {
     if (analysis) return;
@@ -302,39 +297,72 @@ export default function SmartMoneyPage() {
       {/* Top 10 Congressional Tracker */}
       <div style={{ marginBottom: 24 }}>
         <SectionCard label="TOP 10 CONGRESSIONAL TRACKER" borderColor="#00ff88">
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-            <button
-              onClick={() => fetchCongressTracker(true)}
-              disabled={trackerLoading}
-              style={{
-                fontFamily: 'monospace',
-                fontSize: 10,
-                letterSpacing: 2,
-                color: '#00ff88',
-                background: '#00ff8815',
-                border: '1px solid #00ff8840',
-                padding: '10px 20px',
-                borderRadius: 6,
-                cursor: trackerLoading ? 'wait' : 'pointer',
-                opacity: trackerLoading ? 0.6 : 1,
-              }}
-            >
-              {trackerLoading ? 'RUNNING…' : 'RUN TRACKER'}
-            </button>
-            {congressReport?.cache && (
-              <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068' }}>
-                {congressReport.cache === 'HIT' ? 'Cached' : congressReport.cache === 'FRESH' ? 'Fresh' : 'Stale cache'}
-              </span>
-            )}
-          </div>
+          {!congressReport && !trackerLoading ? (
+            <>
+              <p style={{ fontSize: 13, color: '#7a8fa8', lineHeight: 1.6, margin: '0 0 16px' }}>
+                AI-powered analysis of the 10 most profitable congressional traders — follow plays,
+                urgency signals, and sector bias. Runs on demand (~15s).
+              </p>
+              <button
+                onClick={() => fetchCongressTracker()}
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  letterSpacing: 2,
+                  color: '#00ff88',
+                  background: '#00ff8815',
+                  border: '1px solid #00ff8840',
+                  padding: '10px 20px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                RUN TRACKER
+              </button>
+              {trackerError && (
+                <div style={{ color: '#ff8fa0', fontSize: 13, marginTop: 12 }}>{trackerError}</div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <button
+                  onClick={() => fetchCongressTracker()}
+                  disabled={trackerLoading}
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    letterSpacing: 2,
+                    color: '#00ff88',
+                    background: '#00ff8815',
+                    border: '1px solid #00ff8840',
+                    padding: '10px 20px',
+                    borderRadius: 6,
+                    cursor: trackerLoading ? 'wait' : 'pointer',
+                    opacity: trackerLoading ? 0.6 : 1,
+                  }}
+                >
+                  {trackerLoading ? 'RUNNING…' : 'RUN TRACKER'}
+                </button>
+                {congressReport?.cache && !trackerLoading && (
+                  <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068' }}>
+                    {congressReport.cache === 'HIT' ? 'Cached' : congressReport.cache === 'FRESH' ? 'Fresh' : 'Stale cache'}
+                  </span>
+                )}
+              </div>
 
-          {trackerError && (
-            <div style={{ color: '#ff8fa0', fontSize: 13, marginBottom: 12 }}>{trackerError}</div>
-          )}
+              {trackerError && (
+                <div style={{ color: '#ff8fa0', fontSize: 13, marginBottom: 12 }}>{trackerError}</div>
+              )}
 
-          {trackerLoading && !congressReport ? (
-            <Skeleton height={180} />
-          ) : congressReport ? (
+              {trackerLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#7a8fa8' }}>
+                    Analyzing top 10 congressional traders…
+                  </div>
+                  <Skeleton height={180} />
+                </div>
+              ) : congressReport ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
                 <span
@@ -584,10 +612,8 @@ export default function SmartMoneyPage() {
                 </div>
               )}
             </div>
-          ) : (
-            <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#7a8fa8', textAlign: 'center', padding: 24 }}>
-              Run tracker to analyze top 10 congressional traders
-            </div>
+              ) : null}
+            </>
           )}
         </SectionCard>
       </div>
