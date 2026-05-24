@@ -6,6 +6,7 @@ import {
   placeOptionsOrder,
 } from '@/lib/api/alpaca';
 import { createStopLoss } from '@/lib/services/stoploss';
+import { audit } from '@/lib/services/audit';
 
 interface QueueTradeRow {
   id: string;
@@ -69,6 +70,12 @@ export async function PATCH(
         signal_source: row.signal_sources?.join(', '),
         action_taken: false,
         decision_date: new Date().toISOString(),
+      });
+
+      await audit.tradeRejected({
+        ticker: row.ticker,
+        reason: rejection_reason || 'User passed on trade',
+        convictionScore: row.conviction_score,
       });
 
       return NextResponse.json({ success: true, status: 'rejected' });
@@ -152,6 +159,20 @@ export async function PATCH(
           signal_source: 'Autopilot Queue',
           action_taken: true,
           decision_date: new Date().toISOString(),
+        });
+
+        const qty = row.qty || row.contracts || 1;
+        const price = row.limit_price || row.strike_price || undefined;
+        await audit.tradeApproved({
+          ticker: row.ticker,
+          instrument: row.instrument_type,
+          price,
+          quantity: qty,
+          dollarAmount: price ? price * qty : undefined,
+          convictionScore: row.conviction_score,
+          thesis: row.thesis_summary,
+          catalyst: row.key_catalyst || '',
+          signalSources: row.signal_sources || undefined,
         });
 
         return NextResponse.json({

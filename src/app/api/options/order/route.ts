@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { placeOptionsOrder } from '@/lib/api/alpaca';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createStopLoss } from '@/lib/services/stoploss';
+import { audit } from '@/lib/services/audit';
 
 const OCC_SYMBOL = /^[A-Z]{1,6}\d{6}[CP]\d{8}$/;
 
@@ -97,6 +98,16 @@ export async function POST(request: NextRequest) {
         console.error('Stop loss creation error (non-fatal):', stopError);
       }
     }
+
+    await audit.tradeExecuted({
+      ticker: underlying,
+      action: `${String(side).toUpperCase()} ${qtyNum} ${symbol} (${optType})`,
+      price: entryPrice,
+      quantity: qtyNum,
+      dollarAmount: entryPrice * qtyNum * 100,
+      rationale: `Options ${optType} execution via Options Chain`,
+      signalSources: ['Options Chain — Manual Execution'],
+    });
 
     return NextResponse.json({
       ...order,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runAutopilot, type AutopilotReport } from '@/lib/agents/autopilot';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { audit } from '@/lib/services/audit';
 
 let reportCache: { report: AutopilotReport; timestamp: number; date: string } | null = null;
 
@@ -48,6 +49,18 @@ export async function GET(request: NextRequest) {
         risk_flags: report.risk_flags,
         generated_at: report.generated_at,
       });
+
+      if (report.top_opportunities) {
+        await audit.autopilotGenerated({
+          date: report.date,
+          stance: report.overall_action,
+          actionItemCount: report.action_items?.length || 0,
+          topOpportunities: (report.top_opportunities || [])
+            .map((o) => o.ticker)
+            .filter(Boolean),
+          riskFlags: (report.risk_flags || []).map((r) => r.flag).slice(0, 3),
+        });
+      }
     } catch (e) {
       console.error('Failed to save autopilot report:', e);
     }

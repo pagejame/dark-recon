@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { audit } from '@/lib/services/audit';
 
 function generateFingerprint(title: string): string {
   return title
@@ -31,6 +32,13 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) throw error;
+
+    await audit.taskExecuted({
+      taskTitle: body.task_title,
+      actionLabel: body.action_label || 'EXECUTED',
+      result: body.result || 'success',
+      resultMessage: body.result_message || '',
+    });
 
     return NextResponse.json({ success: true, fingerprint });
   } catch (error) {

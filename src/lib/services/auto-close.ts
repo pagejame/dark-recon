@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getPositions } from '@/lib/api/alpaca';
+import { audit } from '@/lib/services/audit';
 
 const ALPACA_BASE = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets';
 const ALPACA_KEY = process.env.ALPACA_API_KEY || '';
@@ -127,6 +128,15 @@ export async function runAutoClose(autoExecute: boolean = false): Promise<AutoCl
         if (decisionError) console.error('Auto-close decision error:', decisionError);
 
         await supabase.from('position_alerts').update({ status: 'actioned' }).eq('id', alert.id);
+
+        await audit.stopLossTriggered({
+          ticker,
+          stopPrice: alert.trigger_price || alert.current_price,
+          currentPrice: alert.current_price,
+          pnlDollar: pnlDollar,
+          pnlPct: pnlPct,
+          autoClose: autoExecute,
+        });
 
         results.push({
           ticker,

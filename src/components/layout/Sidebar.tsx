@@ -23,6 +23,7 @@ import {
   LineChart,
   Layers,
   Rocket,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -45,6 +46,7 @@ const navItems = [
   { href: '/scoreboard', label: 'Scoreboard', icon: Trophy },
   { href: '/alerts', label: 'Alerts', icon: Bell },
   { href: '/journal', label: 'Trade Journal', icon: BookOpen },
+  { href: '/audit', label: 'Audit Log', icon: Shield },
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/launch', label: 'Launch Checklist', icon: Rocket },
 ];

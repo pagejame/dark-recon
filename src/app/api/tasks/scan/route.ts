@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { audit } from '@/lib/services/audit';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -49,6 +50,18 @@ interface HandledEntry {
   message: string;
   when: string;
   fingerprint: string;
+}
+
+async function logScanAudit(
+  created: { title: string }[],
+  skippedCount: number
+): Promise<void> {
+  await audit.siteScanned({
+    tasksCreated: created.length,
+    tasksSkipped: skippedCount,
+    issuesFound: created.map((t) => t.title),
+    actionsExecuted: [],
+  });
 }
 
 async function gatherPlatformStatus(): Promise<string> {
@@ -352,6 +365,7 @@ Maximum 8 tasks per scan.`,
 
     if (start === -1 || end === -1) {
       const skippedCount = recentlyHandled.filter((h) => h.result === 'success').length;
+      await logScanAudit([], skippedCount);
       return NextResponse.json({
         created: 0,
         tasks: [],
@@ -367,6 +381,7 @@ Maximum 8 tasks per scan.`,
 
     if (!Array.isArray(newTasks) || newTasks.length === 0) {
       const skippedCount = recentlyHandled.filter((h) => h.result === 'success').length;
+      await logScanAudit([], skippedCount);
       return NextResponse.json({
         created: 0,
         tasks: [],
@@ -411,6 +426,8 @@ Maximum 8 tasks per scan.`,
     }
 
     const skippedCount = recentlyHandled.filter((h) => h.result === 'success').length;
+
+    await logScanAudit(created, skippedCount);
 
     return NextResponse.json({
       created: created.length,
