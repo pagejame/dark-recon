@@ -11,20 +11,6 @@ interface Task {
   priority: number;
   due_date?: string;
   created_at: string;
-  action_type?: string;
-  action_endpoint?: string;
-  action_method?: string;
-  action_body?: Record<string, unknown>;
-}
-
-interface TaskAction {
-  label: string;
-  endpoint?: string;
-  method?: string;
-  body?: Record<string, unknown>;
-  isNav: boolean;
-  navUrl?: string;
-  confirmText?: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -117,244 +103,89 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
   const otherTasks = tasks.filter((t) => t.category !== 'urgent' && t.priority !== 1);
   const displayTasks = compact ? tasks.slice(0, 5) : tasks;
 
-  function inferAction(task: Task): TaskAction | null {
-    const title = task.title.toLowerCase();
-    const stored = task.action_type;
-    const endpoint = task.action_endpoint;
-
-    // --- STORED API ACTIONS (already execute correctly) ---
-    if (stored === 'api' && endpoint) {
-      const labels: Record<string, string> = {
-        '/api/trading/orders/cancel-all': 'CANCEL ALL ORDERS',
-        '/api/trading/positions/close-all': 'CLOSE ALL POSITIONS',
-        '/api/queue/clear': 'CLEAR QUEUE',
-        '/api/system/health': 'RUN HEALTH CHECK',
-        '/api/email/test': 'SEND TEST EMAIL',
-        '/api/autopilot?refresh=true': 'RUN AUTOPILOT',
-        '/api/queue': 'BUILD QUEUE',
-        '/api/settings': 'ENABLE NOW',
-        '/api/intelligence?refresh=true': 'RUN SWEEP',
-        '/api/smartmoney': 'REFRESH DATA',
-        '/api/scan': 'RUN SCANNER',
-      };
-      return {
-        label: labels[endpoint] || 'EXECUTE',
-        endpoint,
-        method: task.action_method || 'GET',
-        body: task.action_body,
-        isNav: false,
-        confirmText: endpoint.includes('positions/close')
-          ? 'This will close ALL open positions. Are you sure?'
-          : endpoint.includes('orders/cancel')
-            ? 'This will cancel ALL pending orders. Are you sure?'
-            : undefined,
-      };
-    }
-
-    if (stored === 'nav' && endpoint) {
-      const labels: Record<string, string> = {
-        '/queue': 'OPEN QUEUE →',
-        '/recon': 'OPEN WATCHLIST →',
-        '/strategy': 'OPEN STRATEGY →',
-        '/alerts': 'SET ALERTS →',
-        '/portfolio': 'VIEW PORTFOLIO →',
-        '/signals': 'OPEN SIGNALS →',
-      };
-      return {
-        label: labels[endpoint] || 'GO THERE →',
-        isNav: true,
-        navUrl: endpoint,
-      };
-    }
-
-    // --- INTELLIGENCE / DATA REFRESH TASKS ---
-    if (title.includes('reddit') || title.includes('intelligence') || title.includes('sweep')) {
-      return {
-        label: 'RUN SWEEP',
-        endpoint: '/api/intelligence?refresh=true',
-        method: 'GET',
-        isNav: false,
-      };
-    }
-
-    if (title.includes('congressional') || title.includes('smart money')) {
-      return { label: 'REFRESH DATA', endpoint: '/api/smartmoney', method: 'GET', isNav: false };
-    }
-
-    // --- TRADE QUEUE TASKS ---
-    if ((title.includes('review') && title.includes('queue')) || (title.includes('approve') && title.includes('trade'))) {
-      return {
-        label: 'BUILD QUEUE',
-        endpoint: '/api/queue',
-        method: 'POST',
-        body: { action: 'build' },
-        isNav: false,
-      };
-    }
-
-    if (title.includes('trade queue') || title.includes('clear queue')) {
-      return { label: 'CLEAR QUEUE', endpoint: '/api/queue/clear', method: 'DELETE', isNav: false };
-    }
-
-    // --- AUTOPILOT TASKS ---
-    if (title.includes('autopilot') || title.includes('run autopilot')) {
-      return {
-        label: 'RUN AUTOPILOT',
-        endpoint: '/api/autopilot?refresh=true',
-        method: 'GET',
-        isNav: false,
-      };
-    }
-
-    // --- POSITION / ORDER TASKS ---
-    if (title.includes('cancel') && (title.includes('order') || title.includes('alpaca'))) {
-      return {
-        label: 'CANCEL ALL ORDERS',
-        endpoint: '/api/trading/orders/cancel-all',
-        method: 'DELETE',
-        isNav: false,
-        confirmText: 'Cancel all pending Alpaca orders?',
-      };
-    }
-
-    if (title.includes('close') && title.includes('position')) {
-      return {
-        label: 'CLOSE ALL POSITIONS',
-        endpoint: '/api/trading/positions/close-all',
-        method: 'DELETE',
-        isNav: false,
-        confirmText: 'Close ALL open positions and reset to cash?',
-      };
-    }
-
-    // --- HEALTH / LAUNCH TASKS ---
-    if (title.includes('launch') || title.includes('health check') || title.includes('checklist')) {
-      return { label: 'RUN HEALTH CHECK', endpoint: '/api/system/health', method: 'GET', isNav: false };
-    }
-
-    // --- EMAIL TASKS ---
-    if (title.includes('email') || title.includes('resend')) {
-      return { label: 'SEND TEST EMAIL', endpoint: '/api/email/test', method: 'POST', isNav: false };
-    }
-
-    // --- SIGNAL / SCANNER TASKS ---
-    if (title.includes('signal') || title.includes('scanner')) {
-      return { label: 'RUN SCANNER', endpoint: '/api/scan', method: 'GET', isNav: false };
-    }
-
-    // --- SETTINGS TASKS (enable/toggle) ---
-    if (
-      title.includes('enable') ||
-      title.includes('toggle') ||
-      title.includes('auto-pop') ||
-      title.includes('autopop')
-    ) {
-      return {
-        label: 'ENABLE NOW',
-        endpoint: '/api/settings',
-        method: 'PATCH',
-        body: { key: 'watchlist_autopop_enabled', value: { enabled: true } },
-        isNav: false,
-      };
-    }
-
-    // --- WATCHLIST TASK ---
-    if (title.includes('watchlist') || title.includes('recon feed') || title.includes('tickers')) {
-      return { label: 'OPEN WATCHLIST →', isNav: true, navUrl: '/recon' };
-    }
-
-    // --- STRATEGY / DECISION LOG ---
-    if (title.includes('strategy') || title.includes('decision')) {
-      return { label: 'OPEN STRATEGY →', isNav: true, navUrl: '/strategy' };
-    }
-
-    // --- PRICE ALERTS ---
-    if (title.includes('alert') || title.includes('stop loss')) {
-      return { label: 'SET ALERTS →', isNav: true, navUrl: '/alerts' };
-    }
-
-    // --- PORTFOLIO ---
-    if (title.includes('portfolio') || title.includes('position') || title.includes('holding')) {
-      return { label: 'VIEW PORTFOLIO →', isNav: true, navUrl: '/portfolio' };
-    }
-
-    // --- QUEUE (view) ---
-    if (title.includes('queue')) {
-      return { label: 'OPEN QUEUE →', isNav: true, navUrl: '/queue' };
-    }
-
-    // Category fallbacks
-    if (task.category === 'urgent') {
-      return {
-        label: 'CANCEL ALL ORDERS',
-        endpoint: '/api/trading/orders/cancel-all',
-        method: 'DELETE',
-        isNav: false,
-      };
-    }
-    if (task.category === 'trading') {
-      return { label: 'OPEN SIGNALS →', isNav: true, navUrl: '/signals' };
-    }
-    if (task.category === 'platform') {
-      return { label: 'RUN HEALTH CHECK', endpoint: '/api/system/health', method: 'GET', isNav: false };
-    }
-
-    return null;
-  }
-
   const executeTaskAction = async (task: Task) => {
-    const action = inferAction(task);
-    if (!action) return;
-
-    // Handle navigation
-    if (action.isNav && action.navUrl) {
-      window.location.href = action.navUrl;
-      return;
-    }
-
-    // Handle confirmation
-    if (action.confirmText) {
-      const confirmed = window.confirm(action.confirmText);
-      if (!confirmed) return;
-    }
-
-    if (!action.endpoint) return;
-
     setExecutingTask(task.id);
-    setTaskResults((prev) => ({ ...prev, [task.id]: { success: false, message: '' } }));
+    setTaskResults((prev) => ({
+      ...prev,
+      [task.id]: { success: false, message: '⟳ AI analyzing task...' },
+    }));
 
     try {
-      const options: RequestInit = {
-        method: action.method || 'GET',
+      const res = await fetch('/api/tasks/execute', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-      };
+        body: JSON.stringify({
+          title: task.title,
+          notes: task.notes,
+          task_id: task.id,
+        }),
+      });
 
-      if (action.body && ['POST', 'PATCH', 'PUT'].includes(action.method || '')) {
-        options.body = JSON.stringify(action.body);
+      let data = await res.json();
+
+      if (!res.ok || data.error) {
+        setTaskResults((prev) => ({
+          ...prev,
+          [task.id]: { success: false, message: data.error || 'Executor failed' },
+        }));
+        return;
       }
 
-      const res = await fetch(action.endpoint, options);
+      // Confirmation required before executing destructive actions
+      if (data.action?.requires_confirmation && !data.executed) {
+        const confirmed = window.confirm(data.action.confirmation_message || 'Are you sure?');
+        if (!confirmed) {
+          setTaskResults((prev) => ({
+            ...prev,
+            [task.id]: { success: false, message: 'Cancelled' },
+          }));
+          return;
+        }
 
-      // Handle non-JSON responses
-      const contentType = res.headers.get('content-type');
-      let data: Record<string, unknown> = {};
-      if (contentType?.includes('application/json')) {
-        data = await res.json();
-      } else {
-        data = { success: res.ok, message: res.ok ? '✓ Done' : 'Request failed' };
+        setTaskResults((prev) => ({
+          ...prev,
+          [task.id]: { success: false, message: '⟳ Executing...' },
+        }));
+
+        const confirmRes = await fetch('/api/tasks/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: task.title,
+            notes: task.notes,
+            task_id: task.id,
+            confirmed: true,
+            action: data.action,
+          }),
+        });
+        data = await confirmRes.json();
+
+        if (!confirmRes.ok || data.error) {
+          setTaskResults((prev) => ({
+            ...prev,
+            [task.id]: { success: false, message: data.error || 'Execution failed' },
+          }));
+          return;
+        }
       }
 
-      const success = data.success !== false && !data.error && res.ok;
-      const message =
-        (data.message as string | undefined) ||
-        (data.launch_message as string | undefined) ||
-        (typeof data.queued === 'number' ? `✓ ${data.queued} trade(s) queued` : undefined) ||
-        (data.overall_action ? `✓ Autopilot: ${data.overall_action}` : undefined) ||
-        (success ? '✓ Completed successfully' : (data.error as string) || 'Something went wrong');
+      // Navigation tasks — client-side redirect
+      if (!data.executed && data.action?.action_type === 'nav' && data.action?.endpoint) {
+        setTaskResults((prev) => ({
+          ...prev,
+          [task.id]: { success: true, message: `→ Going to ${data.action.endpoint}...` },
+        }));
+        setTimeout(() => {
+          window.location.href = data.action.endpoint;
+        }, 800);
+        return;
+      }
+
+      const success = data.success;
+      const message = data.message || (success ? '✓ Done' : 'Failed');
 
       setTaskResults((prev) => ({ ...prev, [task.id]: { success, message } }));
 
-      // Auto-complete task on success after 2 seconds
       if (success) {
         setTimeout(() => {
           void completeTask(task.id);
@@ -365,7 +196,7 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
         ...prev,
         [task.id]: {
           success: false,
-          message: e instanceof Error ? e.message : 'Failed to execute',
+          message: e instanceof Error ? e.message : 'Failed',
         },
       }));
     } finally {
@@ -693,63 +524,57 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
                 )}
               </div>
 
-              {(() => {
-                const action = inferAction(task);
-                if (!action) return null;
-                const isExecuting = executingTask === task.id;
-                const result = taskResults[task.id];
-
-                return (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignSelf: 'flex-start',
+                  flexShrink: 0,
+                }}
+              >
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void executeTaskAction(task);
+                  }}
+                  disabled={executingTask === task.id}
+                  style={{
+                    padding: '5px 12px',
+                    background:
+                      executingTask === task.id ? '#1e2a3a' : `${catColor}20`,
+                    border: `1px solid ${executingTask === task.id ? '#1e2a3a' : `${catColor}40`}`,
+                    borderRadius: 6,
+                    color: executingTask === task.id ? '#7a8fa8' : catColor,
+                    fontFamily: 'monospace',
+                    fontSize: 8,
+                    letterSpacing: 1,
+                    fontWeight: 700,
+                    cursor: executingTask === task.id ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {executingTask === task.id ? '⟳' : '⚡ EXECUTE'}
+                </button>
+                {taskResults[task.id] && (
                   <div
                     style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 4,
-                      alignSelf: 'flex-start',
-                      flexShrink: 0,
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      letterSpacing: 1,
+                      color: taskResults[task.id].success
+                        ? '#00ff88'
+                        : taskResults[task.id].message.startsWith('⟳')
+                          ? '#ffd700'
+                          : '#ff3d5a',
+                      marginTop: 4,
+                      maxWidth: 160,
+                      lineHeight: 1.4,
                     }}
                   >
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void executeTaskAction(task);
-                      }}
-                      disabled={isExecuting}
-                      style={{
-                        padding: '5px 12px',
-                        background: isExecuting ? '#1e2a3a' : action.isNav ? '#1e2a3a' : `${catColor}20`,
-                        border: `1px solid ${isExecuting ? '#1e2a3a' : catColor}40`,
-                        borderRadius: 6,
-                        color: isExecuting ? '#7a8fa8' : catColor,
-                        fontFamily: 'monospace',
-                        fontSize: 8,
-                        letterSpacing: 1,
-                        fontWeight: 700,
-                        cursor: isExecuting ? 'not-allowed' : 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {isExecuting
-                        ? '⟳ RUNNING...'
-                        : `${action.label}${!action.isNav ? ' ⚡' : ''}`}
-                    </button>
-                    {result && (
-                      <div
-                        style={{
-                          fontFamily: 'monospace',
-                          fontSize: 8,
-                          letterSpacing: 1,
-                          color: result.success ? '#00ff88' : '#ff3d5a',
-                          maxWidth: 140,
-                          lineHeight: 1.3,
-                        }}
-                      >
-                        {result.message}
-                      </div>
-                    )}
+                    {taskResults[task.id].message}
                   </div>
-                );
-              })()}
+                )}
+              </div>
 
               {!compact && (
                 <button
