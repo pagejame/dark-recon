@@ -11,6 +11,10 @@ const DEFAULT_SETTINGS = {
   auto_close_enabled: { enabled: false },
   watchlist_autopop_enabled: { enabled: true },
   autonomous_agent_enabled: { enabled: true },
+  full_autonomy_enabled: { enabled: true, started_at: null, ends_at: null },
+  autonomy_min_conviction: { score: 8 },
+  autonomy_max_position_pct: { pct: 5 },
+  autonomy_daily_trade_limit: { limit: 3 },
 };
 
 export async function GET() {

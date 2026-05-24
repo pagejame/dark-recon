@@ -50,6 +50,16 @@ interface AgentRunResult {
   error?: string;
 }
 
+interface AutonomyConfig {
+  enabled: boolean;
+  started_at: string | null;
+  ends_at: string | null;
+  days_remaining: number | null;
+  min_conviction: number;
+  max_position_pct: number;
+  daily_trade_limit: number;
+}
+
 const DEFAULT_AUTO_CLOSE: ToggleSetting = { enabled: true };
 const DEFAULT_WATCHLIST_AUTOPOP: ToggleSetting = { enabled: true };
 const DEFAULT_AUTONOMOUS_AGENT: ToggleSetting = { enabled: true };
@@ -248,6 +258,7 @@ export default function SettingsPage() {
   const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
   const [agentResult, setAgentResult] = useState<AgentRunResult | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
+  const [autonomyConfig, setAutonomyConfig] = useState<AutonomyConfig | null>(null);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -275,6 +286,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchSettings();
+    void fetch('/api/autonomy')
+      .then((r) => r.json())
+      .then((data) => setAutonomyConfig(data))
+      .catch(() => setAutonomyConfig(null));
   }, [fetchSettings]);
 
   const saveRiskSettings = async () => {
@@ -393,6 +408,8 @@ export default function SettingsPage() {
   };
 
   const maxSingleTrade = (risk.weekly_contribution * risk.max_position_pct) / 100;
+  const autonomyEnabled = autonomyConfig?.enabled === true;
+  const daysRemaining = autonomyConfig?.days_remaining ?? null;
 
   const SaveButton = ({ sectionKey }: { sectionKey: string }) => (
     <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -474,6 +491,188 @@ export default function SettingsPage() {
           {saveError}
         </div>
       )}
+
+      <div
+        style={{
+          background: autonomyEnabled ? '#00ff8808' : '#111620',
+          border: `2px solid ${autonomyEnabled ? '#00ff8840' : '#1e2a3a'}`,
+          borderRadius: 12,
+          padding: 24,
+          marginBottom: 20,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+            gap: 16,
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              {autonomyEnabled && (
+                <div
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: '#00ff88',
+                    boxShadow: '0 0 8px #00ff88',
+                  }}
+                />
+              )}
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  letterSpacing: 3,
+                  color: autonomyEnabled ? '#00ff88' : '#7a8fa8',
+                }}
+              >
+                FULL AUTONOMY MODE
+              </div>
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#e8edf5', marginBottom: 6 }}>
+              {autonomyEnabled ? 'Dark Recon is trading itself' : 'Enable full autonomous trading'}
+            </div>
+            <div style={{ fontSize: 13, color: '#7a8fa8', lineHeight: 1.7, marginBottom: 12 }}>
+              {autonomyEnabled
+                ? `All decisions automated — trades execute, stops fire, rebalancing trims. Agent runs every 10 minutes.${daysRemaining != null ? ` ${daysRemaining} days remaining in trial period.` : ''}`
+                : '30-day paper trading trial. All decisions automated — no approval gates. Trades execute based on conviction score ≥ 8, position size ≤ 5%, max 3 trades per day. Full audit trail maintained.'}
+            </div>
+            {autonomyEnabled && autonomyConfig?.started_at && (
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  color: '#3d5068',
+                  letterSpacing: 1,
+                }}
+              >
+                Started: {new Date(autonomyConfig.started_at).toLocaleDateString()} · Ends:{' '}
+                {autonomyConfig.ends_at
+                  ? new Date(autonomyConfig.ends_at).toLocaleDateString()
+                  : 'N/A'}
+              </div>
+            )}
+          </div>
+
+          {autonomyEnabled && daysRemaining !== null && (
+            <div
+              style={{
+                textAlign: 'center',
+                background: '#00ff8815',
+                border: '1px solid #00ff8840',
+                borderRadius: 10,
+                padding: '16px 24px',
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 36,
+                  fontWeight: 700,
+                  color: '#00ff88',
+                }}
+              >
+                {daysRemaining}
+              </div>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 2,
+                  color: '#7a8fa8',
+                }}
+              >
+                DAYS LEFT
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {!autonomyEnabled ? (
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await fetch('/api/autonomy', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'enable', days: 30 }),
+                });
+                const data = await res.json();
+                if (data.success) window.location.reload();
+              }}
+              style={{
+                padding: '10px 24px',
+                background: '#00ff88',
+                color: '#080a0f',
+                border: 'none',
+                borderRadius: 8,
+                fontFamily: 'monospace',
+                fontSize: 10,
+                letterSpacing: 2,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              ⚡ ENABLE 30-DAY TRIAL
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={async () => {
+                if (
+                  window.confirm(
+                    'Disable full autonomy? Dark Recon will stop trading automatically and require your approval for all trades.'
+                  )
+                ) {
+                  await fetch('/api/autonomy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'disable' }),
+                  });
+                  window.location.reload();
+                }
+              }}
+              style={{
+                padding: '10px 24px',
+                background: 'transparent',
+                border: '1px solid #ff3d5a40',
+                borderRadius: 8,
+                color: '#ff3d5a',
+                fontFamily: 'monospace',
+                fontSize: 10,
+                letterSpacing: 2,
+                cursor: 'pointer',
+              }}
+            >
+              DISABLE AUTONOMY
+            </button>
+          )}
+          <a
+            href="/agent"
+            style={{
+              padding: '10px 20px',
+              background: '#1e2a3a',
+              border: '1px solid #1e2a3a',
+              borderRadius: 8,
+              color: '#7a8fa8',
+              fontFamily: 'monospace',
+              fontSize: 10,
+              letterSpacing: 2,
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            VIEW AGENT LOG →
+          </a>
+        </div>
+      </div>
 
       {loading ? (
         <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">

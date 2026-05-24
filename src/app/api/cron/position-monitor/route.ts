@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const result = await runPositionMonitor();
 
     try {
-      const closeResults = await runAutoClose(false);
+      const closeResults = await runAutoClose();
       if (closeResults.length > 0) {
         console.log('Auto-close actions:', closeResults);
       }

@@ -277,6 +277,14 @@ export default function StrategyPage() {
     action_taken: false,
   });
   const [savingDecision, setSavingDecision] = useState(false);
+  const [autonomyConfig, setAutonomyConfig] = useState<{
+    enabled: boolean;
+    started_at: string | null;
+    ends_at: string | null;
+    days_remaining: number | null;
+    daily_trade_limit: number;
+    min_conviction: number;
+  } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -316,6 +324,10 @@ export default function StrategyPage() {
 
   useEffect(() => {
     void fetchData();
+    void fetch('/api/autonomy')
+      .then((r) => r.json())
+      .then((data) => setAutonomyConfig(data))
+      .catch(() => setAutonomyConfig(null));
   }, [fetchData]);
 
   const saveRules = async () => {
@@ -501,6 +513,84 @@ export default function StrategyPage() {
           </div>
         ))}
       </div>
+
+      {autonomyConfig?.enabled && (
+        <div
+          style={{
+            background: '#00ff8808',
+            border: '1px solid #00ff8840',
+            borderLeft: '3px solid #00ff88',
+            borderRadius: 10,
+            padding: '18px 22px',
+            marginBottom: 24,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 16,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  letterSpacing: 3,
+                  color: '#00ff88',
+                  marginBottom: 8,
+                }}
+              >
+                30-DAY AUTONOMY TRIAL
+              </div>
+              <div style={{ fontSize: 14, color: '#e8edf5', marginBottom: 6 }}>
+                Paper trading with full automation — no approval gates
+              </div>
+              <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#7a8fa8' }}>
+                Conviction ≥ {autonomyConfig.min_conviction} · Max{' '}
+                {autonomyConfig.daily_trade_limit} trades/day · All actions audited
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+              {autonomyConfig.days_remaining != null && (
+                <div style={{ textAlign: 'center' }}>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 32,
+                      fontWeight: 700,
+                      color: '#00ff88',
+                    }}
+                  >
+                    {autonomyConfig.days_remaining}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      letterSpacing: 2,
+                      color: '#7a8fa8',
+                    }}
+                  >
+                    DAYS LEFT
+                  </div>
+                </div>
+              )}
+              {autonomyConfig.started_at && autonomyConfig.ends_at && (
+                <div style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068', lineHeight: 1.8 }}>
+                  <div>
+                    Started {new Date(autonomyConfig.started_at).toLocaleDateString()}
+                  </div>
+                  <div>Ends {new Date(autonomyConfig.ends_at).toLocaleDateString()}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {performance && (
         <StrategyChart

@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getPositions, getAccount, getOrders } from '@/lib/api/alpaca';
 import { logAuditEvent } from '@/lib/services/audit';
+import { getAutonomyConfig, executeQueueTradeByTicker } from '@/lib/services/autonomy';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -223,6 +224,19 @@ export async function runAutonomousAgent(): Promise<AgentRunResult> {
     'None';
 
   const status = await gatherStatus();
+  const autonomy = await getAutonomyConfig();
+
+  const autonomyInstruction = autonomy.enabled
+    ? `FULL AUTONOMY MODE IS ACTIVE${autonomy.days_remaining != null ? ` (${autonomy.days_remaining} days remaining)` : ''}.
+In this mode:
+- AUTO_EXECUTE all safe maintenance actions as normal
+- AUTO_EXECUTE trade entries IF conviction ≥ ${autonomy.min_conviction} and position ≤ ${autonomy.max_position_pct}%
+- AUTO_EXECUTE stop loss closes when breached
+- AUTO_EXECUTE rebalance trims when over limit
+- NOTIFY for anything unusual that should be logged
+- SKIP only when truly nothing to do
+There is NO human approval step. Execute everything that meets the strategy rules.`
+    : `APPROVAL MODE: Queue trades for human approval. Auto-execute only safe maintenance.`;
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
@@ -237,6 +251,8 @@ ${status}
 
 ACTIONS TAKEN IN LAST HOUR (avoid repeating these):
 ${recentActionSummary}
+
+${autonomyInstruction}
 
 DECISION RULES:
 - AUTO_EXECUTE: Safe, reversible, system maintenance actions
@@ -268,7 +284,7 @@ Return ONLY a valid JSON array. No markdown. Max 5 decisions per run:
 ]
 
 Be conservative with AUTO_EXECUTE. When in doubt, NOTIFY or SKIP.
-Never AUTO_EXECUTE trade entries — those always go to QUEUE_FOR_APPROVAL.
+${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades directly — do not use QUEUE_FOR_APPROVAL.' : 'Never AUTO_EXECUTE trade entries — those always go to QUEUE_FOR_APPROVAL.'}
 Never AUTO_EXECUTE position closes without checking if stop was actually breached.`,
       },
     ],
@@ -308,7 +324,12 @@ Never AUTO_EXECUTE position closes without checking if stop was actually breache
 
   for (const decision of decisions) {
     try {
-      if (decision.action === 'AUTO_EXECUTE' && decision.endpoint) {
+      const effectiveAction =
+        autonomy.enabled && decision.action === 'QUEUE_FOR_APPROVAL'
+          ? 'AUTO_EXECUTE'
+          : decision.action;
+
+      if (effectiveAction === 'AUTO_EXECUTE' && decision.endpoint) {
         const baseUrl = getBaseUrl();
         const res = await fetch(`${baseUrl}${decision.endpoint}`, {
           method: decision.method || 'GET',
@@ -326,8 +347,29 @@ Never AUTO_EXECUTE position closes without checking if stop was actually breache
           rationale: decision.rationale,
           outcome: 'not_applicable',
           source: 'system',
-          raw_data: { decision, success },
+          raw_data: { decision, success, full_autonomy: autonomy.enabled },
         });
+      } else if (
+        effectiveAction === 'AUTO_EXECUTE' &&
+        !decision.endpoint &&
+        decision.ticker &&
+        autonomy.enabled
+      ) {
+        const executed = await executeQueueTradeByTicker(decision.ticker);
+        if (executed) {
+          result.executed++;
+          await logAuditEvent({
+            event_type: 'autopilot_action_taken',
+            ticker: decision.ticker,
+            action_taken: `AUTONOMOUS TRADE: ${decision.issue}`,
+            rationale: decision.rationale,
+            outcome: 'pending',
+            source: 'system',
+            raw_data: { decision, full_autonomy: true },
+          });
+        } else {
+          result.skipped++;
+        }
       } else if (decision.action === 'QUEUE_FOR_APPROVAL') {
         result.queued++;
 

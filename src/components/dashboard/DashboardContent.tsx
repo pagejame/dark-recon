@@ -96,6 +96,13 @@ interface AutonomousAgentRun {
   };
 }
 
+interface AutonomyStatus {
+  enabled: boolean;
+  days_remaining: number | null;
+  started_at: string | null;
+  ends_at: string | null;
+}
+
 function isMarketOpenET(): boolean {
   const now = new Date();
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -122,6 +129,7 @@ export default function DashboardContent() {
   const [preMarketMovers, setPreMarketMovers] = useState<PreMarketMover[]>([]);
   const [marketOpen, setMarketOpen] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AutonomousAgentRun | null>(null);
+  const [autonomyConfig, setAutonomyConfig] = useState<AutonomyStatus | null>(null);
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -351,6 +359,16 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const fetchAutonomy = useCallback(async () => {
+    try {
+      const res = await fetch('/api/autonomy');
+      const data = await res.json();
+      setAutonomyConfig(data);
+    } catch {
+      setAutonomyConfig(null);
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void Promise.allSettled([
       fetchBriefing(),
@@ -365,6 +383,7 @@ export default function DashboardContent() {
       fetchRebalance(),
       fetchPreMarket(),
       fetchAgentStatus(),
+      fetchAutonomy(),
     ]);
   }, [
     fetchBriefing,
@@ -379,6 +398,7 @@ export default function DashboardContent() {
     fetchRebalance,
     fetchPreMarket,
     fetchAgentStatus,
+    fetchAutonomy,
   ]);
 
   useEffect(() => {
@@ -474,9 +494,71 @@ export default function DashboardContent() {
 
   const upMovers = preMarketMovers.filter((m) => m.direction === 'up');
   const downMovers = preMarketMovers.filter((m) => m.direction === 'down');
+  const autonomyEnabled = autonomyConfig?.enabled === true;
+  const daysRemaining = autonomyConfig?.days_remaining ?? null;
 
   return (
     <div className="flex flex-col gap-4">
+      {autonomyEnabled && (
+        <div
+          style={{
+            background: '#00ff8808',
+            border: '1px solid #00ff8830',
+            borderLeft: '3px solid #00ff88',
+            borderRadius: 8,
+            padding: '10px 16px',
+            marginBottom: 12,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 8,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: '#00ff88',
+                boxShadow: '0 0 8px #00ff88',
+                animation: 'pulse 2s infinite',
+              }}
+            />
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: '#00ff88',
+                letterSpacing: 2,
+                fontWeight: 700,
+              }}
+            >
+              FULL AUTONOMY ACTIVE
+            </span>
+            <span style={{ fontSize: 13, color: '#7a8fa8' }}>
+              Dark Recon is trading itself — all decisions automated
+            </span>
+          </div>
+          {daysRemaining !== null && (
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: '#3d5068',
+                letterSpacing: 1,
+              }}
+            >
+              {daysRemaining} days remaining ·{' '}
+              <a href="/agent" style={{ color: '#3d9aff', textDecoration: 'none' }}>
+                View agent log →
+              </a>
+            </span>
+          )}
+        </div>
+      )}
+
       <MarketStatusBar briefing={briefing} earnings={earnings} spyDisplay={spySignal ? `SPY · ${spySignal.summary.slice(0, 30)}…` : undefined} />
 
       {preMarketMovers.length > 0 && (
@@ -1011,6 +1093,7 @@ export default function DashboardContent() {
       </div>
 
       <CronStatusWidget />
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
     </div>
   );
 }

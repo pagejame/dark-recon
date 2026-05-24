@@ -1,6 +1,8 @@
-import { getPositions, getAccount } from '@/lib/api/alpaca';
+import { getPositions, getAccount, submitMarketOrder } from '@/lib/api/alpaca';
 import { getStrategyConfig } from '@/lib/services/strategy';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getAutonomyConfig } from '@/lib/services/autonomy';
+import { logAuditEvent } from '@/lib/services/audit';
 
 export interface RebalanceAction {
   ticker: string;
@@ -106,8 +108,33 @@ export async function runRebalanceCheck(): Promise<RebalanceAction[]> {
   const supabase = createAdminClient();
   const marketClose = new Date();
   marketClose.setHours(20, 0, 0, 0);
+  const autonomy = await getAutonomyConfig();
 
   for (const action of actions.filter((a) => a.action !== 'hold' && a.urgency === 'immediate')) {
+    if (action.action === 'trim' && autonomy.enabled && action.shares_to_sell) {
+      try {
+        await submitMarketOrder({
+          symbol: action.ticker,
+          qty: action.shares_to_sell,
+          side: 'sell',
+        });
+
+        await logAuditEvent({
+          event_type: 'rebalance_triggered',
+          ticker: action.ticker,
+          action_taken: `AUTONOMOUS REBALANCE: Sold ${action.shares_to_sell} ${action.ticker} to reduce from ${action.current_pct.toFixed(1)}% to ${action.target_pct}%`,
+          rationale: action.reason,
+          quantity: action.shares_to_sell,
+          dollar_amount: action.dollar_amount,
+          outcome: 'not_applicable',
+          source: 'system',
+        });
+        continue;
+      } catch (e) {
+        console.error(`Auto-rebalance failed for ${action.ticker}:`, e);
+      }
+    }
+
     const { data: existing } = await supabase
       .from('trade_queue')
       .select('id')

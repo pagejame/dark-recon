@@ -15,6 +15,7 @@ import { buildEarningsPlays, queueEarningsPlays } from '@/lib/agents/earnings-pl
 import { runRebalanceCheck } from '@/lib/agents/rebalance';
 import { calculateSignalWeights } from '@/lib/services/signal-learning';
 import { runWatchlistAutoPop } from '@/lib/services/watchlist-autopop';
+import { autoExecutePendingTrades } from '@/lib/services/autonomy';
 
 export const maxDuration = 60;
 
@@ -149,6 +150,15 @@ export async function GET(request: NextRequest) {
     const trades = await buildTradeQueue();
     await saveTradeQueue(trades);
     results.trade_queue = `SUCCESS — ${trades.length} trades queued`;
+
+    try {
+      const executed = await autoExecutePendingTrades();
+      if (executed.length > 0) {
+        results.autonomous_trades = executed.join(' ');
+      }
+    } catch (e) {
+      console.error('Autonomy trade execution error:', e);
+    }
   } catch (e) {
     results.trade_queue = 'FAILED';
     console.error('Trade queue build error:', e);
@@ -164,6 +174,18 @@ export async function GET(request: NextRequest) {
     const earningsPlays = await buildEarningsPlays(allTickers);
     const earningsQueued = await queueEarningsPlays(earningsPlays);
     results.earnings_plays = `SUCCESS — ${earningsQueued} plays queued`;
+
+    try {
+      const earningsExecuted = await autoExecutePendingTrades({
+        earningsOnly: true,
+        minConvictionOverride: 7,
+      });
+      if (earningsExecuted.length > 0) {
+        results.autonomous_earnings = earningsExecuted.join(' ');
+      }
+    } catch (e) {
+      console.error('Autonomy earnings execution error:', e);
+    }
   } catch (e) {
     results.earnings_plays = 'FAILED';
     console.error('Earnings plays error:', e);

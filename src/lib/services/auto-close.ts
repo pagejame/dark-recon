@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getPositions } from '@/lib/api/alpaca';
 import { audit } from '@/lib/services/audit';
+import { getAutonomyConfig } from '@/lib/services/autonomy';
 
 const ALPACA_BASE = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets';
 const ALPACA_KEY = process.env.ALPACA_API_KEY || '';
@@ -56,7 +57,9 @@ export interface AutoCloseResult {
   pnl_at_close?: number;
 }
 
-export async function runAutoClose(autoExecute: boolean = false): Promise<AutoCloseResult[]> {
+export async function runAutoClose(autoExecuteParam?: boolean): Promise<AutoCloseResult[]> {
+  const autonomy = await getAutonomyConfig();
+  const autoExecute = autonomy.enabled ? true : (autoExecuteParam ?? false);
   const supabase = createAdminClient();
   const results: AutoCloseResult[] = [];
 
