@@ -256,6 +256,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [testEmailLoading, setTestEmailLoading] = useState(false);
   const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
+  const [auditReportLoading, setAuditReportLoading] = useState(false);
+  const [auditReportResult, setAuditReportResult] = useState<string | null>(null);
   const [agentResult, setAgentResult] = useState<AgentRunResult | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
   const [autonomyConfig, setAutonomyConfig] = useState<AutonomyConfig | null>(null);
@@ -875,7 +877,8 @@ export default function SettingsPage() {
           {/* Email Notifications */}
           <SectionCard label="EMAIL NOTIFICATIONS" borderColor="#3d9aff" className="md:col-span-2">
             <p style={{ fontSize: 13, color: '#7a8fa8', margin: '0 0 16px', lineHeight: 1.6 }}>
-              Weekly performance summary sent every Sunday morning
+              Weekly performance summary sent every Sunday morning. Full audit report with Claude
+              analysis every Sunday at 6PM ET.
             </p>
             <SettingRow label="Email Address" description="Where weekly reports are delivered">
               <input
@@ -936,6 +939,44 @@ export default function SettingsPage() {
               >
                 SEND EOD SUMMARY
               </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setAuditReportLoading(true);
+                  setAuditReportResult(null);
+                  try {
+                    const res = await fetch('/api/reports', { method: 'POST' });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                      throw new Error(data.error || 'Report generation failed');
+                    }
+                    setAuditReportResult(
+                      `Report generated · P&L ${data.report?.performance?.week_pnl >= 0 ? '+' : ''}$${data.report?.performance?.week_pnl?.toFixed(2) ?? '0.00'} · emailed`
+                    );
+                  } catch (e) {
+                    setAuditReportResult(
+                      e instanceof Error ? e.message : 'Report generation failed'
+                    );
+                  } finally {
+                    setAuditReportLoading(false);
+                  }
+                }}
+                disabled={auditReportLoading}
+                style={{
+                  padding: '10px 20px',
+                  background: auditReportLoading ? '#1e2a3a' : '#9b5de515',
+                  border: '1px solid #9b5de540',
+                  borderRadius: 8,
+                  color: auditReportLoading ? '#7a8fa8' : '#9b5de5',
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  letterSpacing: 2,
+                  fontWeight: 700,
+                  cursor: auditReportLoading ? 'wait' : 'pointer',
+                }}
+              >
+                {auditReportLoading ? 'GENERATING…' : 'GENERATE REPORT NOW'}
+              </button>
               {testEmailResult && (
                 <span
                   style={{
@@ -945,6 +986,17 @@ export default function SettingsPage() {
                   }}
                 >
                   {testEmailResult}
+                </span>
+              )}
+              {auditReportResult && (
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: auditReportResult.includes('generated') ? '#00ff88' : '#ff8fa0',
+                  }}
+                >
+                  {auditReportResult}
                 </span>
               )}
             </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { formatReportAsMarkdown, type WeeklyAuditReport } from '@/lib/services/weekly-audit-format';
 
 interface AuditEvent {
   id: string;
@@ -130,6 +131,28 @@ export default function AuditPage() {
   const [tickerSearch, setTickerSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedFields, setExpandedFields] = useState<Record<string, 'action' | 'rationale'>>({});
+  const [generatingReport, setGeneratingReport] = useState(false);
+
+  const downloadReport = async () => {
+    setGeneratingReport(true);
+    try {
+      const res = await fetch('/api/reports', { method: 'POST' });
+      const data = await res.json();
+      if (!data.success || !data.report) return;
+
+      const report = data.report as WeeklyAuditReport;
+      const md = formatReportAsMarkdown(report);
+      const blob = new Blob([md], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dark-recon-audit-${new Date(report.week_start).toISOString().split('T')[0]}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
 
   const fetchAudit = useCallback(async () => {
     setLoading(true);
@@ -212,24 +235,43 @@ export default function AuditPage() {
               Complete record of every action — compliance, legal protection, strategy research
             </div>
           </div>
-          <button
-            onClick={() => exportCsv(filtered)}
-            disabled={filtered.length === 0}
-            style={{
-              padding: '10px 20px',
-              background: filtered.length === 0 ? '#1e2a3a' : '#3d9aff15',
-              border: `1px solid ${filtered.length === 0 ? '#1e2a3a' : '#3d9aff40'}`,
-              borderRadius: 8,
-              color: filtered.length === 0 ? '#7a8fa8' : '#3d9aff',
-              fontFamily: 'monospace',
-              fontSize: 10,
-              letterSpacing: 2,
-              fontWeight: 700,
-              cursor: filtered.length === 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
-            ↓ EXPORT CSV
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => void downloadReport()}
+              disabled={generatingReport}
+              style={{
+                padding: '10px 20px',
+                background: generatingReport ? '#1e2a3a' : '#9b5de515',
+                border: '1px solid #9b5de540',
+                borderRadius: 8,
+                color: generatingReport ? '#7a8fa8' : '#9b5de5',
+                fontFamily: 'monospace',
+                fontSize: 10,
+                letterSpacing: 2,
+                cursor: generatingReport ? 'wait' : 'pointer',
+              }}
+            >
+              {generatingReport ? 'GENERATING...' : '📊 GENERATE WEEKLY REPORT'}
+            </button>
+            <button
+              onClick={() => exportCsv(filtered)}
+              disabled={filtered.length === 0}
+              style={{
+                padding: '10px 20px',
+                background: filtered.length === 0 ? '#1e2a3a' : '#3d9aff15',
+                border: `1px solid ${filtered.length === 0 ? '#1e2a3a' : '#3d9aff40'}`,
+                borderRadius: 8,
+                color: filtered.length === 0 ? '#7a8fa8' : '#3d9aff',
+                fontFamily: 'monospace',
+                fontSize: 10,
+                letterSpacing: 2,
+                fontWeight: 700,
+                cursor: filtered.length === 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              ↓ EXPORT CSV
+            </button>
+          </div>
         </div>
       </div>
 
