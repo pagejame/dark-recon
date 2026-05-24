@@ -9,37 +9,31 @@ export interface CongressionalTrade {
   chamber: 'house' | 'senate';
 }
 
+const QUIVER_BASE = 'https://api.quiverquant.com/beta';
+const QUIVER_KEY = process.env.QUIVER_API_KEY || '';
+
+function quiverHeaders() {
+  return {
+    Authorization: `Bearer ${QUIVER_KEY}`,
+    Accept: 'application/json',
+    'User-Agent': 'DarkRecon/1.0',
+  };
+}
+
 let tradesCache: { data: CongressionalTrade[]; timestamp: number } | null = null;
 const CACHE_TTL = 60 * 60 * 1000;
 
-const QUIVER_HEADERS = {
-  'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  Accept: 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  Referer: 'https://www.quiverquant.com/congresstrading/',
-  Origin: 'https://www.quiverquant.com',
-};
-
 function parseQuiverTrade(t: Record<string, unknown>): CongressionalTrade | null {
   try {
-    const ticker = (t.Ticker || t.ticker || t.symbol || '').toString().toUpperCase().trim();
+    const ticker = (t.Ticker || t.ticker || '').toString().toUpperCase().trim();
     if (!ticker || ticker === '--' || ticker.length > 5) return null;
 
-    const name =
-      t.Representative ||
-      t.representative ||
-      t.Politician ||
-      t.politician ||
-      t.Name ||
-      t.name ||
-      'Unknown';
-    const date = t.TransactionDate || t.transaction_date || t.Date || t.date || t.Filed || '';
-    const disclosed = t.DisclosureDate || t.disclosure_date || t.Filed || date || '';
-    const txType = t.Transaction || t.transaction || t.Type || t.type || 'Purchase';
-    const amount = t.Range || t.range || t.Amount || t.amount || '$1,001 - $15,000';
-    const asset = t.AssetDescription || t.asset_description || t.Description || ticker;
-    const chamber = (t.Chamber || t.chamber || 'house').toString().toLowerCase();
+    const name = t.Representative || t.representative || t.Politician || 'Unknown';
+    const date = t.TransactionDate || t.Date || t.transaction_date || '';
+    const disclosed = t.ReportDate || t.FilingDate || t.disclosure_date || date;
+    const txType = t.Transaction || t.transaction || t.Type || 'Purchase';
+    const amount = t.Range || t.Amount || t.amount || '$1,001 - $15,000';
+    const chamber = (t.House || t.Chamber || t.chamber || 'house').toString().toLowerCase();
 
     return {
       representative: String(name),
@@ -48,7 +42,7 @@ function parseQuiverTrade(t: Record<string, unknown>): CongressionalTrade | null
       disclosure_date: String(disclosed),
       type: String(txType).toLowerCase().includes('sale') ? 'Sale' : 'Purchase',
       amount: String(amount),
-      asset_description: String(asset),
+      asset_description: String(t.AssetDescription || t.Description || ticker),
       chamber: chamber.includes('senate') ? 'senate' : 'house',
     };
   } catch {
@@ -56,35 +50,9 @@ function parseQuiverTrade(t: Record<string, unknown>): CongressionalTrade | null
   }
 }
 
-async function tryFetchQuiver(url: string): Promise<Record<string, unknown>[] | null> {
-  try {
-    const res = await fetch(url, {
-      headers: QUIVER_HEADERS,
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) {
-      console.error(`Quiver ${url} returned ${res.status}`);
-      return null;
-    }
-    const text = await res.text();
-    if (!text || text.startsWith('<')) return null;
-    const data = JSON.parse(text) as unknown;
-    if (Array.isArray(data)) return data as Record<string, unknown>[];
-    if (data && typeof data === 'object') {
-      const obj = data as Record<string, unknown>;
-      const nested = obj.data || obj.trades || obj.results;
-      if (Array.isArray(nested)) return nested as Record<string, unknown>[];
-    }
-    return null;
-  } catch (e) {
-    console.error(`Quiver fetch error for ${url}:`, e);
-    return null;
-  }
-}
-
 export async function getRecentCongressionalTrades(
   daysBack = 90,
-  limit = 50
+  limit = 100
 ): Promise<CongressionalTrade[]> {
   if (tradesCache && Date.now() - tradesCache.timestamp < CACHE_TTL) {
     return tradesCache.data.slice(0, limit);
@@ -93,65 +61,34 @@ export async function getRecentCongressionalTrades(
   const trades: CongressionalTrade[] = [];
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
 
-  const endpoints = [
-    'https://www.quiverquant.com/beta/bulk/congresstrading',
-    'https://api.quiverquant.com/beta/live/congresstrading',
-    'https://www.quiverquant.com/beta/live/congresstrading',
-  ];
-
-  let rawData: Record<string, unknown>[] | null = null;
-  for (const endpoint of endpoints) {
-    rawData = await tryFetchQuiver(endpoint);
-    if (rawData && rawData.length > 0) {
-      console.log(`Congress data from ${endpoint}: ${rawData.length} records`);
-      break;
-    }
-  }
-
-  if (rawData && rawData.length > 0) {
-    rawData.forEach((t) => {
-      const trade = parseQuiverTrade(t);
-      if (!trade) return;
-      const tradeDate = new Date(trade.transaction_date);
-      if (tradeDate >= cutoff) trades.push(trade);
-    });
-  }
-
-  if (trades.length === 0) {
+  if (QUIVER_KEY) {
     try {
-      const res = await fetch('https://www.quiverquant.com/congresstrading/', {
-        headers: QUIVER_HEADERS,
+      const res = await fetch(`${QUIVER_BASE}/live/congresstrading`, {
+        headers: quiverHeaders(),
         signal: AbortSignal.timeout(10000),
       });
-      if (res.ok) {
-        const html = await res.text();
-        const jsonMatch =
-          html.match(/window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?});/) ||
-          html.match(/window\.__data__\s*=\s*(\[[\s\S]*?\]);/) ||
-          html.match(/"congresstrading"\s*:\s*(\[[\s\S]*?\])/);
 
-        if (jsonMatch) {
-          try {
-            const data = JSON.parse(jsonMatch[1]) as unknown;
-            const items = Array.isArray(data)
-              ? data
-              : (data as Record<string, unknown>)?.congresstrading || [];
-            (items as Record<string, unknown>[]).forEach((t) => {
-              const trade = parseQuiverTrade(t);
-              if (trade) trades.push(trade);
-            });
-          } catch {
-            // skip
-          }
-        }
+      if (res.ok) {
+        const data = await res.json();
+        const results = Array.isArray(data) ? data : [];
+        console.log(`Quiver congressional trades: ${results.length} total records`);
+
+        results.forEach((t: Record<string, unknown>) => {
+          const trade = parseQuiverTrade(t);
+          if (!trade) return;
+          const tradeDate = new Date(trade.transaction_date);
+          if (tradeDate >= cutoff) trades.push(trade);
+        });
+      } else {
+        console.error(`Quiver API returned ${res.status}: ${await res.text()}`);
       }
     } catch (e) {
-      console.error('HTML scrape fallback error:', e);
+      console.error('Quiver API error:', e);
     }
   }
 
   if (trades.length === 0) {
-    console.log('Using demo congressional data — live source unavailable');
+    console.log('Quiver returned no data — using recent demo trades');
     const demoTrades: CongressionalTrade[] = [
       {
         representative: 'Nancy Pelosi',
@@ -238,8 +175,8 @@ export async function getRecentCongressionalTrades(
         chamber: 'house',
       },
       {
-        representative: 'Nancy Pelosi',
-        ticker: 'AMZN',
+        representative: 'Markwayne Mullin',
+        ticker: 'RTX',
         transaction_date: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000)
           .toISOString()
           .split('T')[0],
@@ -247,13 +184,13 @@ export async function getRecentCongressionalTrades(
           .toISOString()
           .split('T')[0],
         type: 'Purchase',
-        amount: '$250,001 - $500,000',
-        asset_description: 'Amazon.com Inc.',
-        chamber: 'house',
+        amount: '$100,001 - $250,000',
+        asset_description: 'RTX Corporation',
+        chamber: 'senate',
       },
       {
-        representative: 'Markwayne Mullin',
-        ticker: 'RTX',
+        representative: 'Nancy Pelosi',
+        ticker: 'AMZN',
         transaction_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
           .toISOString()
           .split('T')[0],
@@ -261,9 +198,9 @@ export async function getRecentCongressionalTrades(
           .toISOString()
           .split('T')[0],
         type: 'Purchase',
-        amount: '$100,001 - $250,000',
-        asset_description: 'RTX Corporation',
-        chamber: 'senate',
+        amount: '$250,001 - $500,000',
+        asset_description: 'Amazon.com Inc.',
+        chamber: 'house',
       },
     ];
     trades.push(...demoTrades);
@@ -281,6 +218,23 @@ export async function getRecentCongressionalTrades(
 }
 
 export async function getCongressionalTradesByTicker(ticker: string): Promise<CongressionalTrade[]> {
+  if (QUIVER_KEY) {
+    try {
+      const res = await fetch(`${QUIVER_BASE}/live/congresstrading/${ticker.toUpperCase()}`, {
+        headers: quiverHeaders(),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return (Array.isArray(data) ? data : [])
+          .map((t: Record<string, unknown>) => parseQuiverTrade(t))
+          .filter((t): t is CongressionalTrade => t !== null);
+      }
+    } catch (e) {
+      console.error(`Quiver ticker trade error for ${ticker}:`, e);
+    }
+  }
+
   const all = await getRecentCongressionalTrades(365, 500);
   return all.filter((t) => t.ticker === ticker.toUpperCase());
 }

@@ -211,6 +211,7 @@ async function checkEnvVars(): Promise<HealthCheck> {
     'NEXT_PUBLIC_SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY',
     'FINNHUB_API_KEY',
+    'QUIVER_API_KEY',
     'ANTHROPIC_API_KEY',
     'RESEND_API_KEY',
     'CRON_SECRET',
