@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/weekly-email",
       "schedule": "0 14 * * 0"
+    },
+    {
+      "path": "/api/cron/outcome-tracker",
+      "schedule": "0 21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/position-monitor",
+      "schedule": "*/10 13-21 * * 1-5"
     }
   ]
 }

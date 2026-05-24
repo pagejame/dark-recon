@@ -55,6 +55,13 @@ interface AutopilotPreview {
   generated_at: string;
 }
 
+interface PositionAlertItem {
+  id?: string;
+  ticker: string;
+  message: string;
+  severity: 'critical' | 'warning' | 'info';
+}
+
 export default function DashboardContent() {
   const [signals, setSignals] = useState<ScanResult[]>([]);
   const [briefing, setBriefing] = useState<MorningBriefingData | null>(null);
@@ -67,6 +74,7 @@ export default function DashboardContent() {
   const [autopilot, setAutopilot] = useState<AutopilotPreview | null>(null);
   const [autopilotLoading, setAutopilotLoading] = useState(false);
   const [autopilotRunning, setAutopilotRunning] = useState(false);
+  const [positionAlerts, setPositionAlerts] = useState<PositionAlertItem[]>([]);
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -228,6 +236,16 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const fetchPositionAlerts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/monitor/alerts');
+      const data = await res.json();
+      setPositionAlerts(data.alerts || []);
+    } catch {
+      setPositionAlerts([]);
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void Promise.allSettled([
       fetchBriefing(),
@@ -238,6 +256,7 @@ export default function DashboardContent() {
       fetchAgentStats(),
       checkAlerts(),
       fetchAutopilot(),
+      fetchPositionAlerts(),
     ]);
   }, [
     fetchBriefing,
@@ -248,6 +267,7 @@ export default function DashboardContent() {
     fetchAgentStats,
     checkAlerts,
     fetchAutopilot,
+    fetchPositionAlerts,
   ]);
 
   useEffect(() => {
@@ -344,6 +364,101 @@ export default function DashboardContent() {
   return (
     <div className="flex flex-col gap-4">
       <MarketStatusBar briefing={briefing} earnings={earnings} spyDisplay={spySignal ? `SPY · ${spySignal.summary.slice(0, 30)}…` : undefined} />
+
+      {positionAlerts.filter((a) => a.severity === 'critical').length > 0 && (
+        <div
+          style={{
+            background: '#ff3d5a10',
+            border: '1px solid #ff3d5a40',
+            borderLeft: '3px solid #ff3d5a',
+            borderRadius: 8,
+            padding: '12px 16px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 16 }}>🚨</span>
+            <div>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  color: '#ff3d5a',
+                  letterSpacing: 1,
+                  fontWeight: 700,
+                  marginBottom: 4,
+                }}
+              >
+                POSITION ALERT — ACTION REQUIRED
+              </div>
+              {positionAlerts
+                .filter((a) => a.severity === 'critical')
+                .map((a, i) => (
+                  <div key={a.id || i} style={{ fontSize: 13, color: '#e8edf5', marginBottom: 2 }}>
+                    {a.message}
+                  </div>
+                ))}
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              await fetch('/api/monitor/alerts', { method: 'PATCH' });
+              setPositionAlerts([]);
+            }}
+            style={{
+              padding: '6px 14px',
+              background: 'transparent',
+              border: '1px solid #ff3d5a40',
+              borderRadius: 6,
+              color: '#ff3d5a',
+              fontFamily: 'monospace',
+              fontSize: 9,
+              letterSpacing: 2,
+              cursor: 'pointer',
+            }}
+          >
+            DISMISS
+          </button>
+        </div>
+      )}
+
+      {positionAlerts.filter((a) => a.severity === 'warning').length > 0 &&
+        positionAlerts.filter((a) => a.severity === 'critical').length === 0 && (
+          <div
+            style={{
+              background: '#ffd70010',
+              border: '1px solid #ffd70030',
+              borderLeft: '3px solid #ffd700',
+              borderRadius: 8,
+              padding: '12px 16px',
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: '#ffd700',
+                letterSpacing: 2,
+                marginBottom: 8,
+              }}
+            >
+              POSITION WARNINGS
+            </div>
+            {positionAlerts
+              .filter((a) => a.severity === 'warning')
+              .map((a, i) => (
+                <div key={a.id || i} style={{ fontSize: 13, color: '#7a8fa8', marginBottom: 4 }}>
+                  {a.message}
+                </div>
+              ))}
+          </div>
+        )}
 
       {triggeredAlerts.length > 0 && (
         <div

@@ -31,6 +31,17 @@ interface TypePerformance {
   avg_return: number;
 }
 
+interface SignalInsights {
+  best_signal_type?: string;
+  worst_signal_type?: string;
+  avg_win_return?: number;
+  avg_loss_return?: number;
+  win_rate?: number;
+  insight?: string;
+  recommendation?: string;
+  updated_at?: string;
+}
+
 const SIGNAL_TYPE_LABELS: Record<string, string> = {
   momentum_breakout: 'Momentum Breakout',
   unusual_volume: 'Unusual Volume',
@@ -117,6 +128,8 @@ export default function ScoreboardPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [signalInsights, setSignalInsights] = useState<SignalInsights | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(true);
 
   const [ticker, setTicker] = useState('');
   const [signalType, setSignalType] = useState('momentum_breakout');
@@ -130,17 +143,24 @@ export default function ScoreboardPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/scoreboard');
-      const data = await res.json();
+      const [scoreRes, settingsRes] = await Promise.all([
+        fetch('/api/scoreboard'),
+        fetch('/api/settings'),
+      ]);
+      const data = await scoreRes.json();
       setOutcomes(data.outcomes || []);
-      setStats(
-        data.stats || { total: 0, win_rate: 0, avg_gain: 0, avg_loss: 0 }
-      );
+      setStats(data.stats || { total: 0, win_rate: 0, avg_gain: 0, avg_loss: 0 });
       setByType(data.by_type || {});
+
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        setSignalInsights((settings.signal_insights as SignalInsights) || null);
+      }
     } catch {
       setOutcomes([]);
     } finally {
       setLoading(false);
+      setInsightsLoading(false);
     }
   }, []);
 
@@ -212,6 +232,114 @@ export default function ScoreboardPage() {
         <div style={{ fontSize: 13, color: '#7a8fa8', marginTop: 4 }}>
           Track every signal — what you did, what happened after
         </div>
+      </div>
+
+      {/* Signal Intelligence */}
+      <div style={{ marginBottom: 24 }}>
+        <SectionCard label="SIGNAL INTELLIGENCE — AUTO-UPDATED NIGHTLY" borderColor="#00ff88">
+          {insightsLoading ? (
+            <Skeleton height={80} />
+          ) : signalInsights ? (
+              <div>
+                <div
+                  className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4"
+                  style={{ marginBottom: 16 }}
+                >
+                  {[
+                    {
+                      label: 'BEST TYPE',
+                      value:
+                        SIGNAL_TYPE_LABELS[signalInsights.best_signal_type || ''] ||
+                        signalInsights.best_signal_type ||
+                        '—',
+                      color: '#00ff88',
+                    },
+                    {
+                      label: 'WIN RATE',
+                      value:
+                        signalInsights.win_rate != null ? `${signalInsights.win_rate}%` : '—',
+                      color: '#ffd700',
+                    },
+                    {
+                      label: 'AVG WIN',
+                      value:
+                        signalInsights.avg_win_return != null
+                          ? `+${signalInsights.avg_win_return.toFixed(1)}%`
+                          : '—',
+                      color: '#00ff88',
+                    },
+                    {
+                      label: 'WORST TYPE',
+                      value:
+                        SIGNAL_TYPE_LABELS[signalInsights.worst_signal_type || ''] ||
+                        signalInsights.worst_signal_type ||
+                        '—',
+                      color: '#ff3d5a',
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        background: '#0d1117',
+                        border: '1px solid #1e2a3a',
+                        borderRadius: 8,
+                        padding: '12px 14px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontFamily: 'monospace',
+                          fontSize: 8,
+                          letterSpacing: 2,
+                          color: '#7a8fa8',
+                          marginBottom: 6,
+                        }}
+                      >
+                        {item.label}
+                      </div>
+                      <div
+                        style={{
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: item.color,
+                        }}
+                      >
+                        {item.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {signalInsights.insight && (
+                  <p style={{ fontSize: 13, color: '#e8edf5', lineHeight: 1.6, margin: '0 0 8px' }}>
+                    {signalInsights.insight}
+                  </p>
+                )}
+                {signalInsights.recommendation && (
+                  <p style={{ fontSize: 12, color: '#7a8fa8', lineHeight: 1.6, margin: 0 }}>
+                    → {signalInsights.recommendation}
+                  </p>
+                )}
+                {signalInsights.updated_at && (
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      color: '#3d5068',
+                      marginTop: 10,
+                      letterSpacing: 1,
+                    }}
+                  >
+                    Updated {new Date(signalInsights.updated_at).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p style={{ fontFamily: 'monospace', fontSize: 11, color: '#7a8fa8', margin: 0 }}>
+                Insights generate after 5+ tracked signal outcomes — runs nightly at 5PM ET
+              </p>
+            )}
+        </SectionCard>
       </div>
 
       {/* Summary Stats */}

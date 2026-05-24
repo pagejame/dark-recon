@@ -10,6 +10,7 @@ import { saveBriefing } from '@/lib/db/briefings';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { takeStrategySnapshot } from '@/lib/services/strategy';
 import { buildTradeQueue, saveTradeQueue } from '@/lib/agents/trade-queue';
+import { runOutcomeTracker } from '@/lib/agents/outcome-tracker';
 
 export const maxDuration = 60;
 
@@ -24,11 +25,13 @@ export async function GET(request: NextRequest) {
 
   console.log('Dark Recon morning run starting...');
 
-  const [briefingResult, scanResult, autopilotResult, snapshotResult] = await Promise.allSettled([
+  const [briefingResult, scanResult, autopilotResult, snapshotResult, outcomeResult] =
+    await Promise.allSettled([
     generateMorningBriefing(),
     runMarketScan(),
     runAutopilot(),
     takeStrategySnapshot(),
+    runOutcomeTracker(),
   ]);
 
   if (briefingResult.status === 'fulfilled') {
@@ -101,6 +104,14 @@ export async function GET(request: NextRequest) {
   } else {
     results.strategy_snapshot = 'FAILED';
     console.error('Strategy snapshot failed:', snapshotResult.reason);
+  }
+
+  if (outcomeResult.status === 'fulfilled') {
+    const r = outcomeResult.value;
+    results.outcome_tracker = `SUCCESS — ${r.outcomes_updated} updated, ${r.new_outcomes_created} new`;
+  } else {
+    results.outcome_tracker = 'FAILED';
+    console.error('Outcome tracker failed:', outcomeResult.reason);
   }
 
   try {
