@@ -31,6 +31,13 @@ interface EmailSettings {
   email_address: string;
 }
 
+interface ToggleSetting {
+  enabled: boolean;
+}
+
+const DEFAULT_AUTO_CLOSE: ToggleSetting = { enabled: false };
+const DEFAULT_WATCHLIST_AUTOPOP: ToggleSetting = { enabled: true };
+
 const DEFAULT_RISK: RiskSettings = {
   max_position_pct: 5,
   max_options_pct: 15,
@@ -214,6 +221,8 @@ export default function SettingsPage() {
   const [briefing, setBriefing] = useState<BriefingSettings>(DEFAULT_BRIEFING);
   const [notifications, setNotifications] = useState<NotificationSettings>(DEFAULT_NOTIFICATIONS);
   const [email, setEmail] = useState<EmailSettings>(DEFAULT_EMAIL);
+  const [autoClose, setAutoClose] = useState<ToggleSetting>(DEFAULT_AUTO_CLOSE);
+  const [watchlistAutopop, setWatchlistAutopop] = useState<ToggleSetting>(DEFAULT_WATCHLIST_AUTOPOP);
 
   const [savedSection, setSavedSection] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -231,6 +240,10 @@ export default function SettingsPage() {
       if (data.briefing) setBriefing({ ...DEFAULT_BRIEFING, ...data.briefing });
       if (data.notifications) setNotifications({ ...DEFAULT_NOTIFICATIONS, ...data.notifications });
       if (data.email) setEmail({ ...DEFAULT_EMAIL, ...data.email });
+      if (data.auto_close_enabled) setAutoClose({ ...DEFAULT_AUTO_CLOSE, ...data.auto_close_enabled });
+      if (data.watchlist_autopop_enabled) {
+        setWatchlistAutopop({ ...DEFAULT_WATCHLIST_AUTOPOP, ...data.watchlist_autopop_enabled });
+      }
     } catch {
       // defaults remain
     } finally {
@@ -241,6 +254,41 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
+
+  const saveRiskSettings = async () => {
+    setSaving('risk');
+    setSaveError(null);
+    try {
+      const saves = [
+        fetch('/api/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'risk', value: risk }),
+        }),
+        fetch('/api/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'auto_close_enabled', value: autoClose }),
+        }),
+        fetch('/api/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'watchlist_autopop_enabled', value: watchlistAutopop }),
+        }),
+      ];
+      const results = await Promise.all(saves);
+      for (const res of results) {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Save failed');
+      }
+      setSavedSection('risk');
+      setTimeout(() => setSavedSection(null), 2000);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(null);
+    }
+  };
 
   const saveSection = async (key: string, value: unknown) => {
     setSaving(key);
@@ -288,7 +336,7 @@ export default function SettingsPage() {
       <button
         type="button"
         onClick={() => {
-          if (sectionKey === 'risk') saveSection('risk', risk);
+          if (sectionKey === 'risk') void saveRiskSettings();
           else if (sectionKey === 'scanner') saveSection('scanner', scanner);
           else if (sectionKey === 'briefing') saveSection('briefing', briefing);
           else if (sectionKey === 'notifications') saveSection('notifications', notifications);
@@ -450,6 +498,28 @@ export default function SettingsPage() {
                 ${maxSingleTrade.toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </span>
             </div>
+
+            <div style={{ borderTop: '1px solid #1e2a3a40', marginTop: 16, paddingTop: 8 }}>
+              <SettingRow
+                label="Auto-Close on Stop Breach"
+                description="Automatically close positions when stop loss is breached during market hours. When OFF, a close order is queued for your approval instead."
+              >
+                <Toggle
+                  value={autoClose.enabled}
+                  onChange={(v) => setAutoClose({ enabled: v })}
+                />
+              </SettingRow>
+              <SettingRow
+                label="Watchlist Auto-Population"
+                description="Automatically add tickers to watchlist when they appear in 2+ signal sources in the same week."
+              >
+                <Toggle
+                  value={watchlistAutopop.enabled}
+                  onChange={(v) => setWatchlistAutopop({ enabled: v })}
+                />
+              </SettingRow>
+            </div>
+
             <SaveButton sectionKey="risk" />
           </SectionCard>
 

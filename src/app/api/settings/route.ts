@@ -8,6 +8,8 @@ const DEFAULT_SETTINGS = {
   briefing: { enabled: true, include_levels: true, include_signals: true },
   notifications: { high_conviction: true, scan_complete: false, briefing_ready: true },
   email: { weekly_enabled: true, email_address: '' },
+  auto_close_enabled: { enabled: false },
+  watchlist_autopop_enabled: { enabled: true },
 };
 
 export async function GET() {

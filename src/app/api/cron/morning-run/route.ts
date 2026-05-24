@@ -14,6 +14,7 @@ import { runOutcomeTracker } from '@/lib/agents/outcome-tracker';
 import { buildEarningsPlays, queueEarningsPlays } from '@/lib/agents/earnings-play';
 import { runRebalanceCheck } from '@/lib/agents/rebalance';
 import { calculateSignalWeights } from '@/lib/services/signal-learning';
+import { runWatchlistAutoPop } from '@/lib/services/watchlist-autopop';
 
 export const maxDuration = 60;
 
@@ -166,6 +167,14 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     results.earnings_plays = 'FAILED';
     console.error('Earnings plays error:', e);
+  }
+
+  try {
+    const autopopResult = await runWatchlistAutoPop();
+    results.watchlist_autopop = `SUCCESS — ${autopopResult.added.length} tickers added`;
+  } catch {
+    results.watchlist_autopop = 'FAILED';
+    console.error('Watchlist autopop failed');
   }
 
   try {
