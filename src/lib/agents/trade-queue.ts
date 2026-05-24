@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getAccount, getPositions } from '@/lib/api/alpaca';
 import { getStrategyConfig } from '@/lib/services/strategy';
+import { getSignalWeights } from '@/lib/services/signal-learning';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -47,10 +48,11 @@ interface AlpacaPositionRow {
 export async function buildTradeQueue(): Promise<QueuedTrade[]> {
   const supabase = createAdminClient();
 
-  const [account, positions, config] = await Promise.all([
+  const [account, positions, config, signalWeights] = await Promise.all([
     getAccount(),
     getPositions(),
     getStrategyConfig(),
+    getSignalWeights(),
   ]);
 
   if (!account || !config) return [];
@@ -121,6 +123,18 @@ Max position size: ${config.max_position_pct}% ($${((equity * config.max_positio
 Min conviction required: ${config.min_conviction_score}/10
 `;
 
+  const weightsContext =
+    Object.keys(signalWeights).length > 0
+      ? `SIGNAL PERFORMANCE WEIGHTS (based on historical outcomes):
+${Object.entries(signalWeights)
+  .sort(([, a], [, b]) => b.win_rate - a.win_rate)
+  .map(
+    ([type, data]) =>
+      `${type}: ${data.win_rate.toFixed(0)}% win rate (weight: ${data.weight.toFixed(1)}x) — ${data.confidence} confidence`
+  )
+  .join('\n')}`
+      : 'No signal performance data yet — building history';
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 3000,
@@ -139,6 +153,10 @@ INTELLIGENCE SWEEP SIGNALS:
 ${intelContext || 'No intelligence signals'}
 
 ${autopilotContext}
+
+${weightsContext}
+
+When scoring conviction, apply these weights — a momentum_breakout signal with 1.4x weight and 70% historical win rate should receive higher conviction than an unfamiliar signal type with 1.0x weight.
 
 RULES FOR QUEUING A TRADE:
 1. Only queue if conviction score would be 8+ based on signal convergence

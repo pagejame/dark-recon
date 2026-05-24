@@ -34,6 +34,15 @@ interface AlpacaPosition {
   unrealized_pl: string;
   unrealized_plpc: string;
   market_value: string;
+  current_price?: string;
+  avg_entry_price?: string;
+}
+
+interface RebalanceAction {
+  ticker: string;
+  action: string;
+  reason: string;
+  urgency: string;
 }
 
 interface SavedThesis {
@@ -75,6 +84,7 @@ export default function DashboardContent() {
   const [autopilotLoading, setAutopilotLoading] = useState(false);
   const [autopilotRunning, setAutopilotRunning] = useState(false);
   const [positionAlerts, setPositionAlerts] = useState<PositionAlertItem[]>([]);
+  const [rebalanceActions, setRebalanceActions] = useState<RebalanceAction[]>([]);
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -272,6 +282,16 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const fetchRebalance = useCallback(async () => {
+    try {
+      const res = await fetch('/api/portfolio/rebalance');
+      const data = await res.json();
+      setRebalanceActions(data.actions || []);
+    } catch {
+      // non-blocking
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void Promise.allSettled([
       fetchBriefing(),
@@ -283,6 +303,7 @@ export default function DashboardContent() {
       checkAlerts(),
       fetchAutopilot(),
       fetchPositionAlerts(),
+      fetchRebalance(),
     ]);
   }, [
     fetchBriefing,
@@ -294,6 +315,7 @@ export default function DashboardContent() {
     checkAlerts,
     fetchAutopilot,
     fetchPositionAlerts,
+    fetchRebalance,
   ]);
 
   useEffect(() => {
@@ -544,6 +566,7 @@ export default function DashboardContent() {
             account={account}
             positions={positions}
             loading={portfolioLoading || positionsLoading}
+            rebalanceActions={rebalanceActions}
           />
         </div>
         <div className="order-2 lg:order-1 lg:col-span-3">

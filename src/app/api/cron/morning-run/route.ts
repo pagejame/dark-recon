@@ -12,6 +12,8 @@ import { takeStrategySnapshot } from '@/lib/services/strategy';
 import { buildTradeQueue, saveTradeQueue } from '@/lib/agents/trade-queue';
 import { runOutcomeTracker } from '@/lib/agents/outcome-tracker';
 import { buildEarningsPlays, queueEarningsPlays } from '@/lib/agents/earnings-play';
+import { runRebalanceCheck } from '@/lib/agents/rebalance';
+import { calculateSignalWeights } from '@/lib/services/signal-learning';
 
 export const maxDuration = 60;
 
@@ -26,13 +28,22 @@ export async function GET(request: NextRequest) {
 
   console.log('Dark Recon morning run starting...');
 
-  const [briefingResult, scanResult, autopilotResult, snapshotResult, outcomeResult] =
-    await Promise.allSettled([
+  const [
+    briefingResult,
+    scanResult,
+    autopilotResult,
+    snapshotResult,
+    outcomeResult,
+    rebalanceResult,
+    signalWeightsResult,
+  ] = await Promise.allSettled([
     generateMorningBriefing(),
     runMarketScan(),
     runAutopilot(),
     takeStrategySnapshot(),
     runOutcomeTracker(),
+    runRebalanceCheck(),
+    calculateSignalWeights(),
   ]);
 
   if (briefingResult.status === 'fulfilled') {
@@ -115,6 +126,22 @@ export async function GET(request: NextRequest) {
   } else {
     results.outcome_tracker = 'FAILED';
     console.error('Outcome tracker failed:', outcomeResult.reason);
+  }
+
+  if (rebalanceResult.status === 'fulfilled') {
+    const immediate = rebalanceResult.value.filter((a) => a.urgency === 'immediate').length;
+    results.rebalance = `SUCCESS — ${rebalanceResult.value.length} actions, ${immediate} immediate`;
+  } else {
+    results.rebalance = 'FAILED';
+    console.error('Rebalance check failed:', rebalanceResult.reason);
+  }
+
+  if (signalWeightsResult.status === 'fulfilled') {
+    const w = signalWeightsResult.value;
+    results.signal_learning = `SUCCESS — ${Object.keys(w.weights).length} signal types, ${w.total_signals_tracked} outcomes tracked`;
+  } else {
+    results.signal_learning = 'FAILED';
+    console.error('Signal weights failed:', signalWeightsResult.reason);
   }
 
   try {

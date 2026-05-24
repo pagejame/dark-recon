@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import PortfolioHeatmap from '@/components/portfolio/PortfolioHeatmap';
 
 interface AlpacaPosition {
   symbol: string;
@@ -8,6 +9,8 @@ interface AlpacaPosition {
   unrealized_pl: string;
   unrealized_plpc: string;
   market_value: string;
+  current_price?: string;
+  avg_entry_price?: string;
 }
 
 interface AlpacaAccount {
@@ -17,20 +20,45 @@ interface AlpacaAccount {
   last_equity: string;
 }
 
+interface RebalanceAction {
+  ticker: string;
+  action: string;
+  reason: string;
+  urgency: string;
+}
+
 interface PortfolioSnapshotProps {
   account: AlpacaAccount | null;
   positions: AlpacaPosition[];
   loading: boolean;
+  rebalanceActions?: RebalanceAction[];
 }
 
 function formatMoney(val: number) {
   return val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
-export default function PortfolioSnapshot({ account, positions, loading }: PortfolioSnapshotProps) {
+export default function PortfolioSnapshot({
+  account,
+  positions,
+  loading,
+  rebalanceActions = [],
+}: PortfolioSnapshotProps) {
   const equity = account ? parseFloat(account.equity) : 0;
   const dayPnl = account ? parseFloat(account.equity) - parseFloat(account.last_equity) : 0;
   const isPositive = dayPnl >= 0;
+
+  const heatmapPositions = positions.map((p) => ({
+    ticker: p.symbol,
+    pnl_pct: parseFloat(p.unrealized_plpc || '0') * 100,
+    pnl_dollar: parseFloat(p.unrealized_pl || '0'),
+    market_value: parseFloat(p.market_value || '0'),
+    portfolio_pct: equity > 0 ? (parseFloat(p.market_value || '0') / equity) * 100 : 0,
+    current_price: parseFloat(p.current_price || '0'),
+    entry_price: parseFloat(p.avg_entry_price || '0'),
+  }));
+
+  const immediateRebalance = rebalanceActions.filter((a) => a.urgency === 'immediate');
 
   return (
     <div
@@ -93,78 +121,34 @@ export default function PortfolioSnapshot({ account, positions, loading }: Portf
 
           <div style={{ borderTop: '1px solid #1e2a3a', marginBottom: 12 }} />
 
-          {positions.length === 0 ? (
-            <p
+          <PortfolioHeatmap positions={heatmapPositions} totalEquity={equity} />
+
+          {immediateRebalance.map((action, i) => (
+            <div
+              key={i}
               style={{
+                marginTop: 8,
+                padding: '8px 12px',
+                background: '#ffd70010',
+                border: '1px solid #ffd70030',
+                borderRadius: 8,
+                fontSize: 11,
+                color: '#ffd700',
                 fontFamily: 'monospace',
-                fontSize: 10,
-                color: '#3d5068',
-                letterSpacing: 1,
-                marginBottom: 12,
               }}
             >
-              No positions yet
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
-              {positions.slice(0, 4).map((pos) => {
-                const pl = parseFloat(pos.unrealized_pl);
-                const plPct = parseFloat(pos.unrealized_plpc) * 100;
-                const mktVal = parseFloat(pos.market_value);
-                const allocPct = equity > 0 ? (mktVal / equity) * 100 : 0;
-                const plColor = pl >= 0 ? '#00ff88' : '#ff3d5a';
-
-                return (
-                  <div key={pos.symbol}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        marginBottom: 4,
-                      }}
-                    >
-                      <span style={{ color: '#ffd700', fontWeight: 700, minWidth: 44 }}>
-                        {pos.symbol}
-                      </span>
-                      <span style={{ color: '#7a8fa8', minWidth: 28 }}>{pos.qty}</span>
-                      <span style={{ color: plColor, minWidth: 64 }}>
-                        {pl >= 0 ? '+' : ''}
-                        {formatMoney(pl)}
-                      </span>
-                      <span style={{ color: plColor, minWidth: 48 }}>
-                        {plPct >= 0 ? '+' : ''}
-                        {plPct.toFixed(2)}%
-                      </span>
-                      <div
-                        style={{
-                          flex: 1,
-                          height: 4,
-                          background: '#1e2a3a',
-                          borderRadius: 2,
-                          overflow: 'hidden',
-                          minWidth: 40,
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${Math.min(allocPct, 100)}%`,
-                            height: '100%',
-                            background: '#3d9aff',
-                            borderRadius: 2,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              ⚖️ {action.ticker}: {action.reason}
             </div>
-          )}
+          ))}
 
-          <div style={{ borderTop: '1px solid #1e2a3a', marginBottom: 12 }} />
+          <div
+            style={{
+              borderTop: '1px solid #1e2a3a',
+              marginTop: 12,
+              marginBottom: 12,
+              paddingTop: 12,
+            }}
+          />
 
           <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#7a8fa8', marginBottom: 12 }}>
             Cash: {formatMoney(parseFloat(account.cash))} · Buying Power:{' '}
