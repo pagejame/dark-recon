@@ -23,9 +23,16 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 interface TasksWidgetProps {
   compact?: boolean;
+  onScanComplete?: (count: number) => void;
+  onTasksLoaded?: (tasks: Task[]) => void;
+  executeAllTrigger?: number;
 }
 
-export default function TasksWidget({ compact = false }: TasksWidgetProps) {
+export default function TasksWidget({
+  compact = false,
+  onTasksLoaded,
+  executeAllTrigger,
+}: TasksWidgetProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -39,11 +46,13 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
     Record<string, { success: boolean; message: string }>
   >({});
 
-  const fetchTasks = async () => {
+  const fetchTasksAndNotify = async () => {
     try {
       const res = await fetch('/api/tasks');
       const data = await res.json();
-      setTasks(data.tasks || []);
+      const loadedTasks = data.tasks || [];
+      setTasks(loadedTasks);
+      if (onTasksLoaded) onTasksLoaded(loadedTasks);
     } catch {
       // silent
     } finally {
@@ -52,7 +61,7 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
   };
 
   useEffect(() => {
-    void fetchTasks();
+    void fetchTasksAndNotify();
   }, []);
 
   const completeTask = async (id: string) => {
@@ -218,6 +227,24 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
       setExecutingTask(null);
     }
   };
+
+  const executeAll = async (tasksToRun: Task[]) => {
+    const pending = tasksToRun.filter((t) => t.status === 'pending');
+    if (pending.length === 0) return;
+
+    for (const task of pending) {
+      if (taskResults[task.id]?.success) continue;
+      await executeTaskAction(task);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  };
+
+  useEffect(() => {
+    if (executeAllTrigger && executeAllTrigger > 0 && tasks.length > 0) {
+      void executeAll(tasks);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [executeAllTrigger]);
 
   if (loading) {
     return (
