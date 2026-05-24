@@ -99,6 +99,100 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
   const otherTasks = tasks.filter((t) => t.category !== 'urgent' && t.priority !== 1);
   const displayTasks = compact ? tasks.slice(0, 5) : tasks;
 
+  function getTaskAction(task: Task): { label: string; action: () => void } | null {
+    const title = task.title.toLowerCase();
+
+    if (
+      title.includes('alpaca') ||
+      title.includes('limit order') ||
+      title.includes('pending order') ||
+      title.includes('cancel')
+    ) {
+      return { label: 'GO TO PORTFOLIO', action: () => { window.location.href = '/portfolio'; } };
+    }
+    if (
+      title.includes('close all') ||
+      title.includes('open position') ||
+      title.includes('close position')
+    ) {
+      return { label: 'VIEW POSITIONS', action: () => { window.location.href = '/portfolio'; } };
+    }
+    if (
+      title.includes('launch checklist') ||
+      title.includes('run launch') ||
+      title.includes('system check')
+    ) {
+      return { label: 'RUN CHECKLIST', action: () => { window.location.href = '/launch'; } };
+    }
+    if (title.includes('trade queue') || title.includes('approve') || title.includes('queue')) {
+      return { label: 'OPEN QUEUE', action: () => { window.location.href = '/queue'; } };
+    }
+    if (title.includes('watchlist') || title.includes('recon feed') || title.includes('ticker')) {
+      return { label: 'OPEN WATCHLIST', action: () => { window.location.href = '/recon'; } };
+    }
+    if (title.includes('strategy') || title.includes('decision log')) {
+      return { label: 'OPEN STRATEGY', action: () => { window.location.href = '/strategy'; } };
+    }
+    if (title.includes('alert') || title.includes('price alert') || title.includes('stop loss')) {
+      return { label: 'SET ALERTS', action: () => { window.location.href = '/alerts'; } };
+    }
+    if (title.includes('autopilot')) {
+      return { label: 'RUN AUTOPILOT', action: () => { window.location.href = '/autopilot'; } };
+    }
+    if (title.includes('intelligence') || title.includes('sweep') || title.includes('reddit')) {
+      return { label: 'OPEN INTEL', action: () => { window.location.href = '/intelligence'; } };
+    }
+    if (title.includes('congressional') || title.includes('smart money') || title.includes('pelosi')) {
+      return { label: 'SMART MONEY', action: () => { window.location.href = '/smartmoney'; } };
+    }
+    if (title.includes('settings') || title.includes('enable') || title.includes('toggle')) {
+      return { label: 'OPEN SETTINGS', action: () => { window.location.href = '/settings'; } };
+    }
+    if (title.includes('weekly email') || title.includes('email') || title.includes('resend')) {
+      return { label: 'EMAIL SETTINGS', action: () => { window.location.href = '/settings'; } };
+    }
+    if (title.includes('journal') || title.includes('log') || title.includes('record')) {
+      return { label: 'OPEN JOURNAL', action: () => { window.location.href = '/journal'; } };
+    }
+    if (title.includes('portfolio') || title.includes('position') || title.includes('holding')) {
+      return { label: 'VIEW PORTFOLIO', action: () => { window.location.href = '/portfolio'; } };
+    }
+    if (title.includes('options') || title.includes('call') || title.includes('put')) {
+      return { label: 'OPTIONS CHAIN', action: () => { window.location.href = '/options'; } };
+    }
+    if (title.includes('earnings')) {
+      return { label: 'EARNINGS CALENDAR', action: () => { window.location.href = '/earnings'; } };
+    }
+    if (title.includes('thesis')) {
+      return { label: 'THESIS BUILDER', action: () => { window.location.href = '/thesis'; } };
+    }
+    if (title.includes('signal') || title.includes('scanner')) {
+      return { label: 'VIEW SIGNALS', action: () => { window.location.href = '/signals'; } };
+    }
+    if (
+      title.includes('supabase') ||
+      title.includes('database') ||
+      title.includes('clear trade queue')
+    ) {
+      return { label: 'GO TO LAUNCH', action: () => { window.location.href = '/launch'; } };
+    }
+    if (title.includes('dashboard')) {
+      return { label: 'DASHBOARD', action: () => { window.location.href = '/dashboard'; } };
+    }
+
+    if (task.category === 'trading') {
+      return { label: 'VIEW SIGNALS', action: () => { window.location.href = '/signals'; } };
+    }
+    if (task.category === 'platform') {
+      return { label: 'DASHBOARD', action: () => { window.location.href = '/dashboard'; } };
+    }
+    if (task.category === 'urgent') {
+      return { label: 'GO TO PORTFOLIO', action: () => { window.location.href = '/portfolio'; } };
+    }
+
+    return null;
+  }
+
   if (loading) {
     return (
       <div
@@ -418,6 +512,37 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
                   </div>
                 )}
               </div>
+
+              {(() => {
+                const taskAction = getTaskAction(task);
+                if (!taskAction) return null;
+                return (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      taskAction.action();
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      background: `${catColor}15`,
+                      border: `1px solid ${catColor}40`,
+                      borderRadius: 6,
+                      color: catColor,
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      letterSpacing: 1,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                      alignSelf: 'flex-start',
+                      marginTop: 2,
+                    }}
+                  >
+                    {taskAction.label} →
+                  </button>
+                );
+              })()}
 
               {!compact && (
                 <button
