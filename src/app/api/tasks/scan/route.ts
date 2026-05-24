@@ -34,14 +34,27 @@ interface ScanTask {
 function generateFingerprint(title: string): string {
   return title
     .toLowerCase()
-    .replace(/\$[\d,\.]+/g, '$X')
+    .replace(/\$[\d,\.]+/g, 'PRICE')
     .replace(/\d{4}-\d{2}-\d{2}/g, 'DATE')
-    .replace(/\d+/g, 'N')
+    .replace(/\b(xle|meta|lly|nvda|gm|qqq|spy|aapl|msft|amzn)\b/gi, 'TICKER')
+    .replace(/\d+/g, 'NUM')
     .replace(/[^a-z\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 100);
+    .slice(0, 80);
 }
+
+const CATEGORY_BLOCKS: Record<string, string[]> = {
+  cancel_orders: ['cancel', 'order', 'limit order', 'pending order'],
+  close_positions: ['close all', 'close position', 'reset portfolio'],
+  clear_queue: ['clear queue', 'clear trade queue'],
+  health_check: ['launch checklist', 'health check', 'system check'],
+  dismiss_alerts: ['dismiss alert', 'triggered alert', 'price alert'],
+  stop_audit: ['stop loss audit', 'set stop', 'stop-loss', 'defensive stop'],
+  rebalance: ['rebalance', 'overweight', 'position size exceeded'],
+  correlation: ['correlation', 'sector risk', 'sector exposure'],
+  build_queue: ['build queue', 'trade queue', 'populate queue'],
+};
 
 interface HandledEntry {
   title: string;
@@ -50,6 +63,21 @@ interface HandledEntry {
   message: string;
   when: string;
   fingerprint: string;
+}
+
+interface ExecutionLogRow {
+  task_title: string;
+  action_label: string;
+  result: string;
+  result_message?: string;
+  issue_fingerprint?: string;
+  executed_at: string;
+}
+
+interface DoneTaskRow {
+  title: string;
+  completed_at?: string;
+  category?: string;
 }
 
 async function logScanAudit(
@@ -269,15 +297,44 @@ export async function POST(_request: NextRequest) {
   try {
     const supabase = createAdminClient();
 
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: executionLog } = await supabase
       .from('task_execution_log')
-      .select('task_title, action_label, result, result_message, issue_fingerprint, executed_at')
-      .gte('executed_at', thirtyDaysAgo)
-      .order('executed_at', { ascending: false })
-      .limit(50);
+      .select('*')
+      .eq('result', 'success')
+      .gte('executed_at', sevenDaysAgo)
+      .order('executed_at', { ascending: false });
 
-    const recentlyHandled: HandledEntry[] = (executionLog || []).map((log) => ({
+    const { data: doneTasks } = await supabase
+      .from('tasks')
+      .select('title, completed_at, category')
+      .eq('status', 'done')
+      .gte('completed_at', sevenDaysAgo);
+
+    const handledCategories = new Set<string>();
+    const handledKeywords = new Set<string>();
+
+    const allHandled = [
+      ...(executionLog || []).map((l: ExecutionLogRow) => l.task_title || ''),
+      ...(doneTasks || []).map((t: DoneTaskRow) => t.title || ''),
+    ].filter(Boolean);
+
+    allHandled.forEach((title) => {
+      const lower = title.toLowerCase();
+      Object.entries(CATEGORY_BLOCKS).forEach(([category, keywords]) => {
+        if (keywords.some((kw) => lower.includes(kw))) {
+          handledCategories.add(category);
+        }
+      });
+      lower
+        .split(' ')
+        .filter((w) => w.length > 4)
+        .forEach((word) => {
+          handledKeywords.add(word);
+        });
+    });
+
+    const recentlyHandled: HandledEntry[] = (executionLog || []).map((log: ExecutionLogRow) => ({
       title: log.task_title,
       action: log.action_label,
       result: log.result,
@@ -286,9 +343,17 @@ export async function POST(_request: NextRequest) {
       fingerprint: log.issue_fingerprint || generateFingerprint(log.task_title),
     }));
 
-    const handledFingerprints = new Set(
-      recentlyHandled.filter((h) => h.result === 'success').map((h) => h.fingerprint)
-    );
+    const handledSummary =
+      allHandled.length > 0
+        ? `RECENTLY COMPLETED TASKS (DO NOT recreate these or similar tasks):
+${allHandled
+  .slice(0, 20)
+  .map((t) => `  ✓ ${t}`)
+  .join('\n')}
+
+BLOCKED CATEGORIES (already handled recently):
+${[...handledCategories].map((c) => `  - ${c.replace(/_/g, ' ')}`).join('\n') || '  none'}`
+        : 'No recently completed tasks.';
 
     const platformStatus = await gatherPlatformStatus();
 
@@ -298,12 +363,6 @@ export async function POST(_request: NextRequest) {
       .neq('status', 'done');
 
     const existingTitles = (existingTasks || []).map((t) => t.title.toLowerCase());
-
-    const handledContext =
-      recentlyHandled.length > 0
-        ? `RECENTLY HANDLED (do NOT re-create these unless the situation has materially changed):
-${recentlyHandled.map((h) => `  [${h.result.toUpperCase()}] ${h.title} — ${h.action} on ${h.when}: ${h.message}`).join('\n')}`
-        : 'No recently handled tasks.';
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
@@ -319,17 +378,21 @@ ${platformStatus}
 EXISTING TASKS (don't duplicate these):
 ${existingTitles.join('\n') || 'none'}
 
-${handledContext}
+${handledSummary}
+
+STRICT DEDUPLICATION RULES:
+1. If "cancel_orders" is in blocked categories → DO NOT create any task about canceling orders
+2. If "close_positions" is in blocked categories → DO NOT create any task about closing positions
+3. If "clear_queue" is in blocked categories → DO NOT create any task about clearing the queue
+4. If "dismiss_alerts" is in blocked categories → DO NOT create any task about dismissing alerts
+5. If "stop_audit" is in blocked categories → DO NOT create any task about stop losses
+6. If a NEARLY IDENTICAL task appears in recently completed → DO NOT recreate it
+7. Only create tasks for NEW issues that weren't present before
+
+When in doubt about whether an issue was already handled — SKIP IT and return [].
+It is better to miss a task than to create a duplicate.
 
 Generate ONLY tasks that are genuinely needed right now based on the data above. Be specific and actionable.
-
-IMPORTANT: Do NOT create tasks for issues that appear in RECENTLY HANDLED unless:
-1. The same issue has recurred (e.g. new triggered alerts after previous ones were dismissed)
-2. A previous action failed and needs to be retried
-3. Conditions have materially changed since it was last handled
-
-If you skip a potential task because it was recently handled, that is correct behavior.
-Return [] if all detected issues were recently handled.
 
 Return ONLY valid JSON array, no markdown:
 [
@@ -393,21 +456,38 @@ Maximum 8 tasks per scan.`,
       });
     }
 
+    const filteredTasks = newTasks.filter((task) => {
+      const lower = (task.title || '').toLowerCase();
+
+      for (const [category, keywords] of Object.entries(CATEGORY_BLOCKS)) {
+        if (handledCategories.has(category)) {
+          if (keywords.some((kw) => lower.includes(kw))) {
+            console.log(`Blocked duplicate task (category ${category}): ${task.title}`);
+            return false;
+          }
+        }
+      }
+
+      const isDuplicate = existingTitles.some((existing) => {
+        const existingWords = existing.split(' ').filter((w: string) => w.length > 4);
+        const taskWords = lower.split(' ').filter((w: string) => w.length > 4);
+        const overlap = existingWords.filter((w: string) => taskWords.includes(w)).length;
+        return overlap >= 3;
+      });
+
+      if (isDuplicate) {
+        console.log(`Blocked duplicate task (word overlap): ${task.title}`);
+        return false;
+      }
+
+      return true;
+    });
+
     const created = [];
-    for (const task of newTasks.slice(0, 8)) {
+    for (const task of filteredTasks.slice(0, 8)) {
       if (!task.title) continue;
 
       const fingerprint = generateFingerprint(task.title);
-
-      if (handledFingerprints.has(fingerprint)) continue;
-
-      const isDuplicate = existingTitles.some(
-        (existing) =>
-          existing.includes(task.title.toLowerCase().slice(0, 20)) ||
-          task.title.toLowerCase().includes(existing.slice(0, 20))
-      );
-
-      if (isDuplicate) continue;
 
       const { data, error } = await supabase
         .from('tasks')

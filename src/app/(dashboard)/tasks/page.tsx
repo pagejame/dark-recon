@@ -186,25 +186,51 @@ export default function TasksPage() {
         )}
 
         {scanResult && !executingAll && (
-          <div
-            style={{
-              marginTop: 12,
-              padding: '10px 16px',
-              background: scanResult.startsWith('✓') ? '#00ff8808' : '#ff3d5a08',
-              border: `1px solid ${scanResult.startsWith('✓') ? '#00ff8830' : '#ff3d5a30'}`,
-              borderRadius: 8,
-              fontFamily: 'monospace',
-              fontSize: 11,
-              color: scanResult.startsWith('✓') ? '#00ff88' : '#ff3d5a',
-              letterSpacing: 1,
-            }}
-          >
-            {scanResult}
-            {showExecuteAll && scanResult.startsWith('✓') && (
-              <span style={{ color: '#ffd700', marginLeft: 12 }}>
-                — Click ▶ EXECUTE ALL to run them all automatically
-              </span>
-            )}
+          <div style={{ marginTop: 12 }}>
+            <div
+              style={{
+                padding: '10px 16px',
+                background: scanResult.startsWith('✓') ? '#00ff8808' : '#ff3d5a08',
+                border: `1px solid ${scanResult.startsWith('✓') ? '#00ff8830' : '#ff3d5a30'}`,
+                borderRadius: 8,
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: scanResult.startsWith('✓') ? '#00ff88' : '#ff3d5a',
+                letterSpacing: 1,
+              }}
+            >
+              {scanResult}
+              {showExecuteAll && scanResult.startsWith('✓') && (
+                <span style={{ color: '#ffd700', marginLeft: 12 }}>
+                  — Click ▶ EXECUTE ALL to run them all automatically
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (
+                  window.confirm('Reset scan history? Next scan will treat all issues as new.')
+                ) {
+                  await fetch('/api/tasks/log', { method: 'DELETE' });
+                  setScanResult('✓ Scan history reset');
+                }
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: 8,
+                color: '#3d5068',
+                letterSpacing: 1,
+                textDecoration: 'underline',
+                padding: '4px 0',
+                marginTop: 4,
+              }}
+            >
+              reset scan history
+            </button>
           </div>
         )}
 

@@ -5,13 +5,14 @@ import { audit } from '@/lib/services/audit';
 function generateFingerprint(title: string): string {
   return title
     .toLowerCase()
-    .replace(/\$[\d,\.]+/g, '$X')
+    .replace(/\$[\d,\.]+/g, 'PRICE')
     .replace(/\d{4}-\d{2}-\d{2}/g, 'DATE')
-    .replace(/\d+/g, 'N')
+    .replace(/\b(xle|meta|lly|nvda|gm|qqq|spy|aapl|msft|amzn)\b/gi, 'TICKER')
+    .replace(/\d+/g, 'NUM')
     .replace(/[^a-z\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 100);
+    .slice(0, 80);
 }
 
 export async function POST(request: NextRequest) {
@@ -59,5 +60,16 @@ export async function GET() {
     return NextResponse.json({ log: data || [] });
   } catch {
     return NextResponse.json({ log: [] });
+  }
+}
+
+export async function DELETE() {
+  try {
+    const supabase = createAdminClient();
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await supabase.from('task_execution_log').delete().lt('executed_at', oneHourAgo);
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ error: 'Clear failed' }, { status: 500 });
   }
 }

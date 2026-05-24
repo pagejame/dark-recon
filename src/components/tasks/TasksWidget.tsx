@@ -30,13 +30,14 @@ interface ExecutionLogEntry {
 function generateFingerprint(title: string): string {
   return title
     .toLowerCase()
-    .replace(/\$[\d,\.]+/g, '$X')
+    .replace(/\$[\d,\.]+/g, 'PRICE')
     .replace(/\d{4}-\d{2}-\d{2}/g, 'DATE')
-    .replace(/\d+/g, 'N')
+    .replace(/\b(xle|meta|lly|nvda|gm|qqq|spy|aapl|msft|amzn)\b/gi, 'TICKER')
+    .replace(/\d+/g, 'NUM')
     .replace(/[^a-z\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 100);
+    .slice(0, 80);
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -106,12 +107,30 @@ export default function TasksWidget({
       execution_message?: string;
     }
   ) => {
+    const task = tasks.find((t) => t.id === id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
+
     await fetch(`/api/tasks/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'done', ...meta }),
     });
+
+    if (task && !meta?.execution_result) {
+      fetch('/api/tasks/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_title: task.title,
+          task_category: task.category,
+          action_taken: 'manual_complete',
+          action_label: 'MARKED DONE',
+          result: 'success',
+          result_message: 'Task manually marked as complete',
+          issue_fingerprint: generateFingerprint(task.title),
+        }),
+      }).catch(console.error);
+    }
   };
 
   const deleteTask = async (id: string) => {
@@ -252,7 +271,7 @@ export default function TasksWidget({
       setTaskResults((prev) => ({ ...prev, [task.id]: { success, message: resultMsg } }));
 
       if (success) {
-        void fetch('/api/tasks/log', {
+        fetch('/api/tasks/log', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -261,7 +280,8 @@ export default function TasksWidget({
             action_taken: action.endpoint || 'manual',
             action_label: action.label || 'EXECUTED',
             result: 'success',
-            result_message: resultMsg,
+            result_message: resultMsg || 'Task completed successfully',
+            issue_fingerprint: generateFingerprint(task.title),
           }),
         }).catch(console.error);
 
