@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPositions } from '@/lib/api/alpaca';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
 
@@ -15,6 +16,7 @@ export interface TickerItem {
   change_pct: number;
   is_position: boolean;
   is_index: boolean;
+  is_watchlist: boolean;
 }
 
 const OCC_SYMBOL = /^[A-Z]{1,6}\d{6}[CP]\d{8}$/;
@@ -58,7 +60,17 @@ export async function GET() {
       // non-fatal
     }
 
-    const allTickers = [...new Set([...INDEX_TICKERS, ...positionTickers])];
+    // Get watchlist tickers from Supabase
+    let watchlistTickers: string[] = [];
+    try {
+      const supabase = createAdminClient();
+      const { data: watchlist } = await supabase.from('watchlist').select('ticker');
+      watchlistTickers = (watchlist || []).map((w: { ticker: string }) => w.ticker).filter(Boolean);
+    } catch {
+      /* non-fatal */
+    }
+
+    const allTickers = [...new Set([...INDEX_TICKERS, ...positionTickers, ...watchlistTickers])];
 
     const quotes = await Promise.all(
       allTickers.map(async (ticker) => {
@@ -71,6 +83,7 @@ export async function GET() {
           change_pct: quote.change_pct,
           is_position: positionTickers.includes(ticker),
           is_index: INDEX_TICKERS.includes(ticker),
+          is_watchlist: watchlistTickers.includes(ticker) && !positionTickers.includes(ticker),
         } as TickerItem;
       })
     );
@@ -80,6 +93,7 @@ export async function GET() {
     const ordered = [
       ...items.filter((i) => i.is_index),
       ...items.filter((i) => i.is_position && !i.is_index),
+      ...items.filter((i) => i.is_watchlist && !i.is_position && !i.is_index),
     ];
 
     tickerCache = { data: ordered, timestamp: Date.now() };

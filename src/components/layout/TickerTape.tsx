@@ -9,6 +9,7 @@ interface TickerItem {
   change_pct: number;
   is_position: boolean;
   is_index: boolean;
+  is_watchlist: boolean;
 }
 
 function isMarketHours(): boolean {
@@ -144,6 +145,17 @@ export default function TickerTape() {
                   }}
                 />
               )}
+              {item.is_watchlist && (
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#3d9aff',
+                    flexShrink: 0,
+                  }}
+                />
+              )}
 
               <span
                 style={{
@@ -151,7 +163,12 @@ export default function TickerTape() {
                   fontSize: 10,
                   fontWeight: 700,
                   letterSpacing: 1,
-                  color: item.is_position && !item.is_index ? '#ffd700' : '#7a8fa8',
+                  color:
+                    item.is_position && !item.is_index
+                      ? '#ffd700'
+                      : item.is_watchlist
+                        ? '#3d9aff'
+                        : '#7a8fa8',
                 }}
               >
                 {item.ticker}
