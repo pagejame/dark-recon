@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { takeStrategySnapshot } from '@/lib/services/strategy';
 import { buildTradeQueue, saveTradeQueue } from '@/lib/agents/trade-queue';
 import { runOutcomeTracker } from '@/lib/agents/outcome-tracker';
+import { buildEarningsPlays, queueEarningsPlays } from '@/lib/agents/earnings-play';
 
 export const maxDuration = 60;
 
@@ -43,6 +44,8 @@ export async function GET(request: NextRequest) {
         briefing_text: briefingResult.value.briefing_text,
         top_signals: briefingResult.value.top_signals,
         key_levels: briefingResult.value.key_levels,
+        premarket_data: briefingResult.value.pre_market ?? null,
+        limit_order_assessments: briefingResult.value.limit_order_assessments ?? [],
       });
       results.briefing = saved ? 'SUCCESS' : 'SAVE_FAILED';
     } catch {
@@ -121,6 +124,21 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     results.trade_queue = 'FAILED';
     console.error('Trade queue build error:', e);
+  }
+
+  try {
+    const supabase = createAdminClient();
+    const { data: watchlist } = await supabase.from('watchlist').select('ticker');
+    const watchlistTickers = (watchlist || []).map((w: { ticker: string }) => w.ticker);
+    const defaultTickers = ['NVDA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'TSLA', 'AMD', 'LLY', 'GM'];
+    const allTickers = [...new Set([...watchlistTickers, ...defaultTickers])];
+
+    const earningsPlays = await buildEarningsPlays(allTickers);
+    const earningsQueued = await queueEarningsPlays(earningsPlays);
+    results.earnings_plays = `SUCCESS — ${earningsQueued} plays queued`;
+  } catch (e) {
+    results.earnings_plays = 'FAILED';
+    console.error('Earnings plays error:', e);
   }
 
   try {

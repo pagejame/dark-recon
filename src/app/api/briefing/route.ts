@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateMorningBriefing } from '@/lib/agents/briefing';
-import { getTodaysBriefing, saveBriefing } from '@/lib/db/briefings';
+import { getTodaysBriefing, saveBriefing, mapDbBriefingToResponse } from '@/lib/db/briefings';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     if (!refresh) {
       const cached = await getTodaysBriefing();
       if (cached) {
-        return NextResponse.json({ ...cached, cache: 'HIT' });
+        return NextResponse.json({ ...mapDbBriefingToResponse(cached), cache: 'HIT' });
       }
     }
 
@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
         briefing_text: briefing.briefing_text,
         top_signals: briefing.top_signals,
         key_levels: briefing.key_levels,
+        premarket_data: briefing.pre_market ?? null,
+        limit_order_assessments: briefing.limit_order_assessments ?? [],
       });
     } catch (e) {
       console.error('Failed to save briefing:', e);

@@ -22,6 +22,12 @@ const SENTIMENT_STYLES: Record<string, { label: string; color: string; bg: strin
   volatile: { label: 'VOLATILE', color: '#ffd700', bg: '#ffd70015', border: '#ffd70040' },
 };
 
+const BIAS_STYLES: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  bullish: { label: 'RISK ON', color: '#00ff88', bg: '#00ff8815', border: '#00ff8840' },
+  bearish: { label: 'RISK OFF', color: '#ff3d5a', bg: '#ff3d5a15', border: '#ff3d5a40' },
+  neutral: { label: 'NEUTRAL', color: '#7a8fa8', bg: '#7a8fa815', border: '#7a8fa840' },
+};
+
 function levelColor(label: string) {
   const l = label.toLowerCase();
   if (l.includes('support')) return '#00ff88';
@@ -36,6 +42,19 @@ function minutesAgo(iso: string) {
   if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
   const hrs = Math.floor(mins / 60);
   return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+}
+
+function formatChange(pct: number | null | undefined) {
+  if (pct == null) return '—';
+  const sign = pct >= 0 ? '+' : '';
+  return `${sign}${pct.toFixed(2)}%`;
+}
+
+function changeColor(pct: number | null | undefined) {
+  if (pct == null) return '#7a8fa8';
+  if (pct > 0) return '#00ff88';
+  if (pct < 0) return '#ff3d5a';
+  return '#7a8fa8';
 }
 
 export default function MorningBriefing({
@@ -54,6 +73,8 @@ export default function MorningBriefing({
     ? briefing.briefing_text.split('\n\n').filter(Boolean)
     : [];
   const sentiment = briefing ? SENTIMENT_STYLES[briefing.sentiment] || SENTIMENT_STYLES.neutral : null;
+  const preMarket = briefing?.pre_market;
+  const biasStyle = preMarket ? BIAS_STYLES[preMarket.futures.bias] || BIAS_STYLES.neutral : null;
 
   return (
     <div
@@ -131,6 +152,170 @@ export default function MorningBriefing({
           </button>
         )}
       </div>
+
+      {preMarket && (
+        <div
+          style={{
+            background: '#0d1117',
+            border: '1px solid #1e2a3a',
+            borderRadius: 8,
+            padding: '14px 16px',
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              marginBottom: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 9,
+                letterSpacing: 2,
+                color: '#3d9aff',
+              }}
+            >
+              PRE-MARKET
+            </span>
+            {biasStyle && (
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 1,
+                  fontWeight: 700,
+                  color: biasStyle.color,
+                  background: biasStyle.bg,
+                  border: `1px solid ${biasStyle.border}`,
+                  padding: '2px 10px',
+                  borderRadius: 20,
+                }}
+              >
+                {biasStyle.label}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#3d5068', marginBottom: 2 }}>
+                SPY OVERNIGHT
+              </div>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: changeColor(preMarket.futures.spy_change_pct),
+                }}
+              >
+                {formatChange(preMarket.futures.spy_change_pct)}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#3d5068', marginBottom: 2 }}>
+                QQQ OVERNIGHT
+              </div>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: changeColor(preMarket.futures.qqq_change_pct),
+                }}
+              >
+                {formatChange(preMarket.futures.qqq_change_pct)}
+              </div>
+            </div>
+          </div>
+
+          {preMarket.futures.summary && (
+            <p style={{ fontSize: 12, color: '#7a8fa8', margin: '0 0 12px', lineHeight: 1.5 }}>
+              {preMarket.futures.summary}
+            </p>
+          )}
+
+          {preMarket.position_news.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 1,
+                  color: '#3d5068',
+                  marginBottom: 8,
+                }}
+              >
+                POSITION NEWS
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {preMarket.position_news.slice(0, 4).map((item, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: '#111620',
+                      border: '1px solid #1e2a3a',
+                      borderRadius: 6,
+                      padding: '8px 10px',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: '#ffd700',
+                        marginRight: 8,
+                      }}
+                    >
+                      {item.ticker}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#e8edf5' }}>{item.headline}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {briefing?.limit_order_assessments && briefing.limit_order_assessments.length > 0 && (
+            <div>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 1,
+                  color: '#3d5068',
+                  marginBottom: 8,
+                }}
+              >
+                LIMIT ORDER FILL OUTLOOK
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {briefing.limit_order_assessments.map((assessment, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      fontSize: 12,
+                      color: '#7a8fa8',
+                      lineHeight: 1.5,
+                      paddingLeft: 8,
+                      borderLeft: '2px solid #3d9aff40',
+                    }}
+                  >
+                    {assessment}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading && !briefing && !error && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
