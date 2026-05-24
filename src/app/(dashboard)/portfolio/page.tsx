@@ -33,6 +33,18 @@ interface AlpacaOrder {
   created_at: string;
 }
 
+interface StopLossAuditRow {
+  ticker: string;
+  has_stop: boolean;
+  message: string;
+}
+
+interface CorrelationAlertRow {
+  message: string;
+  recommendation: string;
+  risk_level: string;
+}
+
 function Skeleton({ width = '100%', height = 20 }: { width?: string | number; height?: number }) {
   return (
     <div
@@ -71,6 +83,12 @@ export default function PortfolioPage() {
   const [closeConfirm, setCloseConfirm] = useState<string | null>(null);
   const [closing, setClosing] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
+
+  const [auditResults, setAuditResults] = useState<StopLossAuditRow[]>([]);
+  const [correlationAlerts, setCorrelationAlerts] = useState<CorrelationAlertRow[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditLoaded, setAuditLoaded] = useState(false);
+  const [allProtected, setAllProtected] = useState<boolean | null>(null);
 
   const fetchAccount = useCallback(async () => {
     setAccountLoading(true);
@@ -113,11 +131,33 @@ export default function PortfolioPage() {
     }
   }, []);
 
+  const runProtectionAudit = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const [auditRes, corrRes] = await Promise.all([
+        fetch('/api/portfolio/audit'),
+        fetch('/api/portfolio/correlation'),
+      ]);
+      const auditData = await auditRes.json();
+      const corrData = await corrRes.json();
+      setAuditResults(auditData.results || []);
+      setAllProtected(auditData.all_protected ?? null);
+      setCorrelationAlerts(corrData.alerts || []);
+      setAuditLoaded(true);
+    } catch {
+      setAuditResults([]);
+      setCorrelationAlerts([]);
+    } finally {
+      setAuditLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAccount();
     fetchPositions();
     fetchOrders();
-  }, [fetchAccount, fetchPositions, fetchOrders]);
+    runProtectionAudit();
+  }, [fetchAccount, fetchPositions, fetchOrders, runProtectionAudit]);
 
   useEffect(() => {
     const onPullRefresh = () => {
@@ -325,6 +365,142 @@ export default function PortfolioPage() {
             </div>
           </>
         ) : null}
+      </div>
+
+      {/* Position Protection Audit */}
+      <div
+        style={{
+          background: '#111620',
+          border: '1px solid #1e2a3a',
+          borderLeft: '3px solid #00ff88',
+          borderRadius: 10,
+          padding: 20,
+          marginBottom: 20,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 14,
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 9,
+                letterSpacing: 3,
+                color: '#00ff88',
+              }}
+            >
+              POSITION PROTECTION AUDIT
+            </div>
+            {allProtected === true && auditLoaded && (
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 1,
+                  color: '#00ff88',
+                  background: '#00ff8815',
+                  border: '1px solid #00ff8840',
+                  padding: '2px 8px',
+                  borderRadius: 20,
+                }}
+              >
+                ALL PROTECTED
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => runProtectionAudit()}
+            disabled={auditLoading}
+            style={{
+              padding: '6px 14px',
+              background: auditLoading ? '#1e2a3a' : '#00ff8815',
+              border: '1px solid #00ff8840',
+              borderRadius: 6,
+              color: '#00ff88',
+              fontFamily: 'monospace',
+              fontSize: 9,
+              letterSpacing: 2,
+              cursor: auditLoading ? 'wait' : 'pointer',
+            }}
+          >
+            {auditLoading ? 'RUNNING...' : 'RUN AUDIT'}
+          </button>
+        </div>
+
+        {auditLoading && !auditLoaded ? (
+          <div style={{ padding: '8px 0' }}>
+            <Skeleton height={24} />
+            <Skeleton height={24} />
+          </div>
+        ) : auditResults.length === 0 ? (
+          <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#7a8fa8' }}>
+            No open positions to audit
+          </div>
+        ) : (
+          auditResults.map((result) => (
+            <div
+              key={result.ticker}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '8px 0',
+                borderBottom: '1px solid #0d1117',
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ fontFamily: 'monospace', color: '#ffd700', fontWeight: 700 }}>
+                {result.ticker}
+              </span>
+              <span
+                style={{
+                  fontSize: 12,
+                  color: result.has_stop ? '#00ff88' : '#ff3d5a',
+                  textAlign: 'right',
+                  flex: 1,
+                }}
+              >
+                {result.message}
+              </span>
+            </div>
+          ))
+        )}
+
+        {correlationAlerts.map((alert, i) => (
+          <div
+            key={i}
+            style={{
+              marginTop: 12,
+              padding: 10,
+              background: alert.risk_level === 'high' ? '#ff3d5a10' : '#ffd70010',
+              border: `1px solid ${alert.risk_level === 'high' ? '#ff3d5a30' : '#ffd70030'}`,
+              borderRadius: 8,
+            }}
+          >
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 8,
+                letterSpacing: 2,
+                color: alert.risk_level === 'high' ? '#ff3d5a' : '#ffd700',
+                marginBottom: 4,
+              }}
+            >
+              CORRELATION WARNING
+            </div>
+            <div style={{ fontSize: 13, color: '#e8edf5', marginBottom: 4 }}>{alert.message}</div>
+            <div style={{ fontSize: 11, color: '#7a8fa8' }}>{alert.recommendation}</div>
+          </div>
+        ))}
       </div>
 
       {/* Open Positions */}

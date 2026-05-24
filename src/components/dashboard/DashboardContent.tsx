@@ -238,9 +238,35 @@ export default function DashboardContent() {
 
   const fetchPositionAlerts = useCallback(async () => {
     try {
-      const res = await fetch('/api/monitor/alerts');
-      const data = await res.json();
-      setPositionAlerts(data.alerts || []);
+      const [alertsRes, newsRes] = await Promise.all([
+        fetch('/api/monitor/alerts'),
+        fetch('/api/portfolio/news'),
+      ]);
+      const alertsData = await alertsRes.json();
+      const newsData = await newsRes.json();
+
+      const monitorAlerts: PositionAlertItem[] = (alertsData.alerts || []).map(
+        (a: { id?: string; ticker: string; message: string; severity: string }) => ({
+          id: a.id,
+          ticker: a.ticker,
+          message: a.message,
+          severity: a.severity as PositionAlertItem['severity'],
+        })
+      );
+
+      const highUrgency = (newsData.alerts || []).filter(
+        (a: { urgency: string }) => a.urgency === 'high'
+      );
+
+      const newsAlerts: PositionAlertItem[] = highUrgency.map(
+        (a: { ticker: string; headline: string; sentiment: string }) => ({
+          ticker: a.ticker,
+          message: `📰 ${a.ticker}: ${a.headline}`,
+          severity: a.sentiment === 'negative' ? 'critical' : 'warning',
+        })
+      );
+
+      setPositionAlerts([...monitorAlerts, ...newsAlerts]);
     } catch {
       setPositionAlerts([]);
     }
