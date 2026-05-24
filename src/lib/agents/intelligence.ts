@@ -18,12 +18,6 @@ export interface IntelligenceSignal {
 
 const WATCHLIST = ['NVDA', 'AMD', 'TSLA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'QQQ', 'SPY', 'GM'];
 
-const DATA_SOURCES = {
-  REDDIT_WSB: 'https://www.reddit.com/r/wallstreetbets/hot.json?limit=25',
-  REDDIT_STOCKS: 'https://www.reddit.com/r/stocks/hot.json?limit=25',
-  REDDIT_INVESTING: 'https://www.reddit.com/r/investing/hot.json?limit=25',
-};
-
 interface RedditPostData {
   title?: string;
   selftext?: string;
@@ -35,6 +29,75 @@ interface RedditPostData {
 
 interface RedditChild {
   data?: RedditPostData;
+}
+
+async function sweepReddit(subreddit: string): Promise<IntelligenceSignal[]> {
+  const signals: IntelligenceSignal[] = [];
+
+  const urls = [
+    `https://old.reddit.com/r/${subreddit}/hot.json?limit=25`,
+    `https://www.reddit.com/r/${subreddit}/hot.json?limit=25&raw_json=1`,
+  ];
+
+  let posts: RedditChild[] = [];
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; DarkReconBot/1.0; research tool)',
+          Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!res.ok) continue;
+
+      const text = await res.text();
+      if (!text || text.trim().startsWith('<')) continue;
+
+      const data = JSON.parse(text);
+      posts = data?.data?.children || [];
+      if (posts.length > 0) break;
+    } catch {
+      continue;
+    }
+  }
+
+  if (posts.length === 0) return signals;
+
+  const relevant = posts
+    .map((p) => p.data || {})
+    .filter((post) => {
+      const text = ((post.title || '') + ' ' + (post.selftext || '')).toUpperCase();
+      const hasWatchlistTicker = WATCHLIST.some((ticker) => {
+        return new RegExp(`\\b${ticker}\\b`).test(text);
+      });
+      return hasWatchlistTicker || ((post.score || 0) > 500 && (post.upvote_ratio || 0) > 0.8);
+    })
+    .slice(0, 4);
+
+  relevant.forEach((post) => {
+    const text = ((post.title || '') + ' ' + (post.selftext || '')).toUpperCase();
+    const mentionedTicker = WATCHLIST.find((t) => new RegExp(`\\b${t}\\b`).test(text));
+
+    if (!post.title) return;
+
+    signals.push({
+      source: `Reddit r/${subreddit}`,
+      signal_type: 'social_sentiment',
+      ticker: mentionedTicker,
+      headline: post.title.slice(0, 200),
+      summary: `${(post.score || 0).toLocaleString()} upvotes · ${post.num_comments || 0} comments`,
+      url: post.permalink ? `https://reddit.com${post.permalink}` : undefined,
+      sentiment: 'neutral',
+      strength: (post.score || 0) > 2000 ? 'high' : (post.score || 0) > 500 ? 'medium' : 'low',
+      swept_at: new Date().toISOString(),
+    });
+  });
+
+  return signals;
 }
 
 interface SecHitSource {
@@ -66,74 +129,6 @@ interface ClaudeScore {
   strength?: 'high' | 'medium' | 'low';
   ticker?: string;
   ai_summary?: string;
-}
-
-async function sweepReddit(subreddit: string, url: string): Promise<IntelligenceSignal[]> {
-  const signals: IntelligenceSignal[] = [];
-  try {
-    const jsonUrl = url.endsWith('.json') ? url : url + '.json';
-    const res = await fetch(jsonUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; DarkRecon/1.0; +https://dark-recon.com)',
-        Accept: 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    });
-
-    if (!res.ok) {
-      console.error(`Reddit ${subreddit} returned ${res.status}`);
-      return signals;
-    }
-
-    const text = await res.text();
-    if (!text || text.startsWith('<')) {
-      console.error(`Reddit ${subreddit} returned HTML instead of JSON`);
-      return signals;
-    }
-
-    const data = JSON.parse(text);
-    const posts = (data?.data?.children || []) as RedditChild[];
-
-    const relevantPosts = posts
-      .filter((p) => {
-        const post = p.data || {};
-        const postText = ((post.title || '') + ' ' + (post.selftext || '')).toUpperCase();
-        const hasWatchlistTicker = WATCHLIST.some((ticker) => {
-          const regex = new RegExp(`\\b${ticker}\\b`);
-          return regex.test(postText);
-        });
-        return (
-          hasWatchlistTicker ||
-          ((post.score || 0) > 500 && (post.upvote_ratio || 0) > 0.85)
-        );
-      })
-      .slice(0, 4);
-
-    relevantPosts.forEach((p) => {
-      const post = p.data || {};
-      const postText = ((post.title || '') + ' ' + (post.selftext || '')).toUpperCase();
-      const mentionedTicker = WATCHLIST.find((t) => {
-        const regex = new RegExp(`\\b${t}\\b`);
-        return regex.test(postText);
-      });
-
-      signals.push({
-        source: `Reddit r/${subreddit}`,
-        signal_type: 'social_sentiment',
-        ticker: mentionedTicker,
-        headline: (post.title || '').slice(0, 200),
-        summary: `${(post.score || 0).toLocaleString()} upvotes · ${post.num_comments || 0} comments · r/${subreddit}`,
-        url: `https://reddit.com${post.permalink || ''}`,
-        sentiment: 'neutral',
-        strength:
-          (post.score || 0) > 2000 ? 'high' : (post.score || 0) > 500 ? 'medium' : 'low',
-        swept_at: new Date().toISOString(),
-      });
-    });
-  } catch (e) {
-    console.error(`Reddit sweep error for ${subreddit}:`, e);
-  }
-  return signals;
 }
 
 async function sweepSECFilings(): Promise<IntelligenceSignal[]> {
@@ -243,9 +238,9 @@ const STRENGTH_ORDER: Record<IntelligenceSignal['strength'], number> = {
 export async function runIntelligenceSweep(): Promise<IntelligenceSignal[]> {
   const [wsbSignals, stocksSignals, investingSignals, secSignals, newsSignals] =
     await Promise.allSettled([
-      sweepReddit('wallstreetbets', DATA_SOURCES.REDDIT_WSB),
-      sweepReddit('stocks', DATA_SOURCES.REDDIT_STOCKS),
-      sweepReddit('investing', DATA_SOURCES.REDDIT_INVESTING),
+      sweepReddit('wallstreetbets'),
+      sweepReddit('stocks'),
+      sweepReddit('investing'),
       sweepSECFilings(),
       sweepFinancialNews(),
     ]);

@@ -152,16 +152,82 @@ export async function getFuturesSnapshot(): Promise<PreMarketData['futures']> {
   }
 }
 
+export interface PreMarketMover {
+  ticker: string;
+  price: number;
+  change_pct: number;
+  volume: number;
+  direction: 'up' | 'down';
+  reason?: string;
+}
+
+export async function getPreMarketMovers(): Promise<PreMarketMover[]> {
+  const watchTickers = [
+    'NVDA',
+    'META',
+    'AAPL',
+    'MSFT',
+    'AMZN',
+    'GOOGL',
+    'TSLA',
+    'AMD',
+    'LLY',
+    'GM',
+    'QQQ',
+    'SPY',
+    'XLE',
+    'JPM',
+    'GS',
+    'PLTR',
+    'ARM',
+  ];
+
+  const movers: PreMarketMover[] = [];
+
+  await Promise.all(
+    watchTickers.map(async (ticker) => {
+      try {
+        const res = await fetch(`${FINNHUB_BASE}/quote?symbol=${ticker}`, {
+          headers: { 'X-Finnhub-Token': FINNHUB_KEY },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const changePct = data.dp || 0;
+        const price = data.c || 0;
+        const volume = data.v || 0;
+
+        if (Math.abs(changePct) >= 1.5) {
+          movers.push({
+            ticker,
+            price,
+            change_pct: changePct,
+            volume,
+            direction: changePct >= 0 ? 'up' : 'down',
+          });
+        }
+      } catch {
+        /* skip */
+      }
+    })
+  );
+
+  return movers
+    .sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct))
+    .slice(0, 8);
+}
+
 export async function getPreMarketData(positionTickers: string[]): Promise<PreMarketData> {
-  const [futures, positionNews, marketCalendar] = await Promise.all([
+  const [futures, positionNews, marketCalendar, movers] = await Promise.all([
     getFuturesSnapshot(),
     getPositionNews(positionTickers),
     getMarketCalendar(),
+    getPreMarketMovers(),
   ]);
 
   return {
     futures,
-    pre_market_movers: [],
+    pre_market_movers: movers,
     position_news: positionNews,
     market_calendar: marketCalendar,
   };

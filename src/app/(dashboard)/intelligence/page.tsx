@@ -15,6 +15,20 @@ interface IntelligenceSignal {
   swept_at: string;
 }
 
+interface OptionsFlowSignal {
+  ticker: string;
+  type: 'call' | 'put';
+  strike: number;
+  expiry: string;
+  volume: number;
+  open_interest: number;
+  volume_oi_ratio: number;
+  implied_volatility: number;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+  signal_strength: 'high' | 'medium' | 'low';
+  description: string;
+}
+
 type StrengthFilter = 'all' | 'high' | 'medium' | 'low';
 type SourceFilter = 'all' | 'reddit' | 'sec' | 'news';
 
@@ -71,6 +85,8 @@ function matchesSourceFilter(source: string, filter: SourceFilter) {
 
 export default function IntelligencePage() {
   const [signals, setSignals] = useState<IntelligenceSignal[]>([]);
+  const [optionsFlow, setOptionsFlow] = useState<OptionsFlowSignal[]>([]);
+  const [optionsFlowLoading, setOptionsFlowLoading] = useState(true);
   const [sweptAt, setSweptAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sweeping, setSweeping] = useState(false);
@@ -104,6 +120,18 @@ export default function IntelligencePage() {
 
   useEffect(() => {
     void fetchSignals();
+    void (async () => {
+      setOptionsFlowLoading(true);
+      try {
+        const res = await fetch('/api/options/flow');
+        const data = await res.json();
+        setOptionsFlow(data.signals || []);
+      } catch {
+        setOptionsFlow([]);
+      } finally {
+        setOptionsFlowLoading(false);
+      }
+    })();
   }, [fetchSignals]);
 
   const filteredSignals = useMemo(() => {
@@ -299,6 +327,128 @@ export default function IntelligencePage() {
           {error}
         </div>
       )}
+
+      {/* Unusual Options Flow */}
+      <div
+        style={{
+          background: '#111620',
+          border: '1px solid #1e2a3a',
+          borderLeft: '3px solid #a855f7',
+          borderRadius: 10,
+          padding: '16px 20px',
+          marginBottom: 20,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: 'monospace',
+            fontSize: 9,
+            letterSpacing: 3,
+            color: '#a855f7',
+            marginBottom: 12,
+          }}
+        >
+          UNUSUAL OPTIONS FLOW
+        </div>
+        {optionsFlowLoading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Skeleton height={48} />
+            <Skeleton height={48} />
+          </div>
+        ) : optionsFlow.length === 0 ? (
+          <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#3d5068' }}>
+            No unusual options activity detected — scanning NVDA, META, AAPL, MSFT, AMZN, TSLA
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {optionsFlow.map((flow, i) => {
+              const sent = sentimentStyle(flow.sentiment);
+              return (
+                <div
+                  key={i}
+                  style={{
+                    background: '#0d1117',
+                    border: '1px solid #1e2a3a',
+                    borderRadius: 8,
+                    padding: '10px 14px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: '#ffd700',
+                      }}
+                    >
+                      {flow.ticker}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 8,
+                        letterSpacing: 1,
+                        color: flow.type === 'call' ? '#00ff88' : '#ff3d5a',
+                        background: flow.type === 'call' ? '#00ff8815' : '#ff3d5a15',
+                        border: `1px solid ${flow.type === 'call' ? '#00ff8840' : '#ff3d5a40'}`,
+                        padding: '2px 8px',
+                        borderRadius: 20,
+                      }}
+                    >
+                      {flow.type.toUpperCase()} ${flow.strike}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 8,
+                        letterSpacing: 1,
+                        color: sent.color,
+                        background: sent.bg,
+                        border: `1px solid ${sent.border}`,
+                        padding: '2px 8px',
+                        borderRadius: 20,
+                      }}
+                    >
+                      {flow.sentiment.toUpperCase()}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 9,
+                        color: strengthColor(flow.signal_strength),
+                      }}
+                    >
+                      ● {flow.signal_strength.toUpperCase()}
+                    </span>
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        fontFamily: 'monospace',
+                        fontSize: 9,
+                        color: '#7a8fa8',
+                      }}
+                    >
+                      Vol/OI {flow.volume_oi_ratio}x · IV {flow.implied_volatility}%
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: '#7a8fa8', margin: 0, lineHeight: 1.5 }}>
+                    {flow.description}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

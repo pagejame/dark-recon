@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runPositionMonitor } from '@/lib/agents/position-monitor';
 import { runAutoClose } from '@/lib/services/auto-close';
+import { sendAlertEscalationEmail } from '@/lib/services/alert-escalation';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const maxDuration = 30;
@@ -24,6 +25,23 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createAdminClient();
+
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const { data: unacknowledged } = await supabase
+      .from('position_alerts')
+      .select('*')
+      .eq('severity', 'critical')
+      .eq('status', 'active')
+      .lt('fired_at', twoHoursAgo);
+
+    if (unacknowledged && unacknowledged.length > 0) {
+      try {
+        await sendAlertEscalationEmail(unacknowledged);
+      } catch (e) {
+        console.error('Alert escalation email error (non-fatal):', e);
+      }
+    }
+
     await supabase.from('cron_runs').insert({
       job_name: 'position-monitor',
       status: 'success',

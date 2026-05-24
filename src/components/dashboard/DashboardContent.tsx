@@ -72,6 +72,23 @@ interface PositionAlertItem {
   severity: 'critical' | 'warning' | 'info';
 }
 
+interface PreMarketMover {
+  ticker: string;
+  price: number;
+  change_pct: number;
+  volume: number;
+  direction: 'up' | 'down';
+}
+
+function isMarketOpenET(): boolean {
+  const now = new Date();
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const day = et.getDay();
+  if (day === 0 || day === 6) return false;
+  const minutes = et.getHours() * 60 + et.getMinutes();
+  return minutes >= 570 && minutes < 960;
+}
+
 export default function DashboardContent() {
   const [signals, setSignals] = useState<ScanResult[]>([]);
   const [briefing, setBriefing] = useState<MorningBriefingData | null>(null);
@@ -86,6 +103,8 @@ export default function DashboardContent() {
   const [autopilotRunning, setAutopilotRunning] = useState(false);
   const [positionAlerts, setPositionAlerts] = useState<PositionAlertItem[]>([]);
   const [rebalanceActions, setRebalanceActions] = useState<RebalanceAction[]>([]);
+  const [preMarketMovers, setPreMarketMovers] = useState<PreMarketMover[]>([]);
+  const [marketOpen, setMarketOpen] = useState(false);
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -293,6 +312,18 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const fetchPreMarket = useCallback(async () => {
+    try {
+      const res = await fetch('/api/premarket');
+      const data = await res.json();
+      setPreMarketMovers(data.movers || []);
+      setMarketOpen(data.is_market_open ?? isMarketOpenET());
+    } catch {
+      setPreMarketMovers([]);
+      setMarketOpen(isMarketOpenET());
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void Promise.allSettled([
       fetchBriefing(),
@@ -305,6 +336,7 @@ export default function DashboardContent() {
       fetchAutopilot(),
       fetchPositionAlerts(),
       fetchRebalance(),
+      fetchPreMarket(),
     ]);
   }, [
     fetchBriefing,
@@ -317,6 +349,7 @@ export default function DashboardContent() {
     fetchAutopilot,
     fetchPositionAlerts,
     fetchRebalance,
+    fetchPreMarket,
   ]);
 
   useEffect(() => {
@@ -410,9 +443,113 @@ export default function DashboardContent() {
   const autopilotTruncated =
     autopilotPreview.length > 200 ? `${autopilotPreview.slice(0, 200)}…` : autopilotPreview;
 
+  const upMovers = preMarketMovers.filter((m) => m.direction === 'up');
+  const downMovers = preMarketMovers.filter((m) => m.direction === 'down');
+
   return (
     <div className="flex flex-col gap-4">
       <MarketStatusBar briefing={briefing} earnings={earnings} spyDisplay={spySignal ? `SPY · ${spySignal.summary.slice(0, 30)}…` : undefined} />
+
+      {preMarketMovers.length > 0 && (
+        <div
+          style={{
+            background: '#111620',
+            border: '1px solid #1e2a3a',
+            borderRadius: 10,
+            padding: '12px 16px',
+            marginBottom: 12,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 9,
+              letterSpacing: 3,
+              color: '#7a8fa8',
+              marginBottom: 10,
+            }}
+          >
+            {marketOpen ? 'MARKET MOVERS (TODAY)' : 'PRE-MARKET MOVERS'}
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 140, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {upMovers.map((mover) => (
+                <div
+                  key={mover.ticker}
+                  style={{
+                    background: '#00ff8808',
+                    border: '1px solid #00ff8830',
+                    borderRadius: 8,
+                    padding: '6px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#ffd700',
+                    }}
+                  >
+                    {mover.ticker}
+                  </span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#e8edf5' }}>
+                    ${mover.price.toFixed(2)}
+                  </span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#00ff88' }}>
+                    ▲{Math.abs(mover.change_pct).toFixed(2)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div
+              style={{
+                flex: 1,
+                minWidth: 140,
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 8,
+                justifyContent: 'flex-end',
+              }}
+            >
+              {downMovers.map((mover) => (
+                <div
+                  key={mover.ticker}
+                  style={{
+                    background: '#ff3d5a08',
+                    border: '1px solid #ff3d5a30',
+                    borderRadius: 8,
+                    padding: '6px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#ffd700',
+                    }}
+                  >
+                    {mover.ticker}
+                  </span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#e8edf5' }}>
+                    ${mover.price.toFixed(2)}
+                  </span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#ff3d5a' }}>
+                    ▼{Math.abs(mover.change_pct).toFixed(2)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {positionAlerts.filter((a) => a.severity === 'critical').length > 0 && (
         <div

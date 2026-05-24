@@ -3,6 +3,7 @@ import { getEarningsCalendar, type EarningsCalendarEvent } from '@/lib/api/finnh
 import { getAccount, getPositions, getOrders } from '@/lib/api/alpaca';
 import { getNotableTraderActivity, getTopCongressionalTickers } from '@/lib/api/smartmoney';
 import type { CongressionalTrade } from '@/lib/api/smartmoney';
+import { getUnusualOptionsFlow, type OptionsFlowSignal } from '@/lib/api/options-flow';
 import { runIntelligenceSweep, type IntelligenceSignal } from '@/lib/agents/intelligence';
 import { runCongressTracker } from '@/lib/agents/congress-tracker';
 import { getStrategyConfig, getStrategyPerformance } from '@/lib/services/strategy';
@@ -89,6 +90,7 @@ export async function runAutopilot(): Promise<AutopilotReport> {
     congressResult,
     strategyConfigResult,
     strategyPerfResult,
+    optionsFlowResult,
   ] = await Promise.allSettled([
     getEarningsCalendar(7),
     getAccount(),
@@ -100,6 +102,7 @@ export async function runAutopilot(): Promise<AutopilotReport> {
     runCongressTracker(),
     getStrategyConfig(),
     getStrategyPerformance(),
+    getUnusualOptionsFlow(),
   ]);
 
   const earnings =
@@ -132,6 +135,10 @@ export async function runAutopilot(): Promise<AutopilotReport> {
     strategyConfigResult.status === 'fulfilled' ? strategyConfigResult.value : null;
   const strategyPerf =
     strategyPerfResult.status === 'fulfilled' ? strategyPerfResult.value : null;
+  const optionsFlow =
+    optionsFlowResult.status === 'fulfilled'
+      ? (optionsFlowResult.value as OptionsFlowSignal[])
+      : [];
 
   const earningsContext =
     earnings
@@ -204,6 +211,14 @@ Buying Power: $${parseFloat(account.buying_power || '0').toLocaleString()}
     ? `Strategy: ${strategyConfig.name}\nMax Positions: ${strategyConfig.max_positions}\nMax Position Size: ${strategyConfig.max_position_pct}%\nMin Conviction: ${strategyConfig.min_conviction_score}/10\nRebalance: ${strategyConfig.rebalance_frequency}\nTotal Return: ${strategyPerf?.total_return_pct?.toFixed(2) ?? '0'}%\nAlpha vs ${strategyConfig.benchmark_ticker}: ${strategyPerf?.alpha?.toFixed(2) ?? '0'}%\nOpen Positions: ${strategyPerf?.positions_count ?? 0}/${strategyConfig.max_positions}`
     : 'No strategy configuration available';
 
+  const optionsFlowContext =
+    optionsFlow.length > 0
+      ? optionsFlow
+          .slice(0, 5)
+          .map((s) => s.description)
+          .join('\n')
+      : 'No unusual options flow detected';
+
   const prompt = `You are Dark Recon's Autopilot Agent — an elite autonomous trading intelligence system. Today is ${today} (${dayOfWeek}). Market is currently ${isMarketOpen ? 'OPEN' : 'CLOSED'}.
 
 Generate a complete autonomous daily action plan based on this real data:
@@ -228,6 +243,9 @@ ${topCongressTickersContext}
 
 WEB INTELLIGENCE SWEEP (pre-priced signals from Reddit, SEC, news):
 ${intelContext}
+
+UNUSUAL OPTIONS FLOW (smart money positioning via options):
+${optionsFlowContext}
 
 CONGRESSIONAL TOP 10 INTELLIGENCE:
 ${congressContext}
