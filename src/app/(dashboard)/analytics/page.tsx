@@ -11,16 +11,21 @@ interface AnalyticsSummary {
   equity: number;
   win_rate: number;
   journal_count: number;
+  options_count?: number;
+  stock_count?: number;
 }
 
 interface TradeHistoryItem {
   id: string;
   symbol: string;
+  underlying?: string;
+  is_options?: boolean;
   side: string;
   qty: number;
   filled_price: number;
   filled_at: string;
   dollar_value: number;
+  order_type?: string;
 }
 
 interface JournalEntry {
@@ -293,7 +298,25 @@ export default function AnalyticsPage() {
         </div>
       ) : summary ? (
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard label="TOTAL TRADES" value={String(summary.total_trades)} accent="#3d9aff" />
+          <div>
+            <StatCard label="TOTAL TRADES" value={String(summary.total_trades)} accent="#3d9aff" />
+            {(summary.stock_count !== undefined || summary.options_count !== undefined) && (
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  color: '#3d5068',
+                  letterSpacing: 1,
+                  marginTop: 6,
+                  paddingLeft: 4,
+                }}
+              >
+                {summary.stock_count ?? 0} stock trade{(summary.stock_count ?? 0) !== 1 ? 's' : ''}{' '}
+                · {summary.options_count ?? 0} options trade
+                {(summary.options_count ?? 0) !== 1 ? 's' : ''}
+              </div>
+            )}
+          </div>
           <StatCard
             label="TOTAL P&L"
             value={`${summary.total_pnl >= 0 ? '+' : ''}${formatMoney(summary.total_pnl)}`}
@@ -360,8 +383,34 @@ export default function AnalyticsPage() {
                           cursor: 'pointer',
                         }}
                       >
-                        <td style={{ ...tdStyle, color: '#ffd700', fontWeight: 700 }}>
-                          {trade.symbol}
+                        <td style={{ padding: '8px 12px' }}>
+                          <span
+                            style={{
+                              fontFamily: 'monospace',
+                              fontSize: 14,
+                              fontWeight: 700,
+                              color: '#ffd700',
+                            }}
+                          >
+                            {trade.underlying || trade.symbol}
+                          </span>
+                          {trade.is_options && (
+                            <span
+                              style={{
+                                marginLeft: 6,
+                                fontFamily: 'monospace',
+                                fontSize: 8,
+                                letterSpacing: 1,
+                                color: '#3d9aff',
+                                background: '#3d9aff15',
+                                border: '1px solid #3d9aff40',
+                                padding: '1px 6px',
+                                borderRadius: 4,
+                              }}
+                            >
+                              OPT
+                            </span>
+                          )}
                         </td>
                         <td
                           style={{

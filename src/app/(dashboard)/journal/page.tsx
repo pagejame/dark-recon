@@ -207,23 +207,54 @@ export default function JournalPage() {
                     </td>
                   </tr>
                 ) : (
-                  positions.map((pos) => (
+                  positions.map((pos) => {
+                    const isOption =
+                      pos.position_type === 'call' || pos.position_type === 'put';
+
+                    return (
                     <tr key={pos.id} className="border-b border-border/50">
                       <td className="py-3 pr-4 font-mono font-bold text-text-primary">
-                        {pos.ticker}
+                        <span>{pos.ticker}</span>
+                        {isOption && (
+                          <span
+                            className="ml-2 font-mono text-[8px] tracking-wide"
+                            style={{
+                              color: '#3d9aff',
+                              background: '#3d9aff15',
+                              border: '1px solid #3d9aff40',
+                              padding: '1px 6px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            OPT
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 pr-4 uppercase text-text-secondary">
-                        {pos.position_type}
+                        {isOption ? (
+                          <Badge variant={pos.position_type === 'call' ? 'green' : 'red'}>
+                            {pos.position_type.toUpperCase()}
+                          </Badge>
+                        ) : (
+                          pos.position_type
+                        )}
                       </td>
                       <td className="py-3 pr-4 font-mono text-text-primary">
                         {formatPrice(pos.entry_price)}
+                        {isOption && (
+                          <span className="ml-1 text-xs text-text-muted">/contract</span>
+                        )}
                       </td>
                       <td className="py-3 pr-4 font-mono text-text-secondary">{pos.quantity}</td>
                       <td className="py-3 pr-4 font-mono text-text-muted">
-                        {pos.strike_price ? formatPrice(pos.strike_price) : '—'}
+                        {isOption && pos.strike_price
+                          ? formatPrice(pos.strike_price)
+                          : '—'}
                       </td>
                       <td className="py-3 pr-4 font-mono text-text-muted">
-                        {pos.expiration_date || '—'}
+                        {isOption && pos.expiration_date
+                          ? new Date(pos.expiration_date).toLocaleDateString()
+                          : '—'}
                       </td>
                       <td className="py-3 pr-4 font-mono text-text-muted">$0.00</td>
                       <td className="py-3 pr-4 font-mono text-xs text-text-muted">
@@ -239,7 +270,8 @@ export default function JournalPage() {
                         </Button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

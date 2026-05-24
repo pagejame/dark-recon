@@ -14,6 +14,12 @@ interface AlpacaOrder {
   updated_at?: string;
 }
 
+const OCC_SYMBOL = /^[A-Z]{1,6}\d{6}[CP]\d{8}$/;
+
+function isOptionsSymbol(symbol: string): boolean {
+  return OCC_SYMBOL.test(symbol || '');
+}
+
 export async function GET() {
   try {
     const [ordersResult, accountResult, historyResult, journalResult] =
@@ -33,6 +39,9 @@ export async function GET() {
 
     const filledOrders = orders.filter((o) => o.status === 'filled');
 
+    const optionsTrades = filledOrders.filter((o) => isOptionsSymbol(o.symbol || ''));
+    const stockTrades = filledOrders.filter((o) => !isOptionsSymbol(o.symbol || ''));
+
     const totalTrades = filledOrders.length;
     const buyOrders = filledOrders.filter((o) => o.side === 'buy');
     const sellOrders = filledOrders.filter((o) => o.side === 'sell');
@@ -42,15 +51,26 @@ export async function GET() {
     const totalPnL = equity - 100000;
     const dayPnL = equity - lastEquity;
 
-    const tradeHistory = filledOrders.map((order) => ({
-      id: order.id,
-      symbol: order.symbol,
-      side: order.side,
-      qty: parseFloat(order.qty || order.filled_qty || '0'),
-      filled_price: parseFloat(order.filled_avg_price || '0'),
-      filled_at: order.filled_at || order.updated_at,
-      dollar_value: parseFloat(order.qty || '0') * parseFloat(order.filled_avg_price || '0'),
-    }));
+    const tradeHistory = filledOrders.map((order) => {
+      const isOptions = isOptionsSymbol(order.symbol || '');
+      const underlying = isOptions ? order.symbol.replace(/\d.*/, '') : order.symbol;
+
+      return {
+        id: order.id,
+        symbol: order.symbol,
+        underlying,
+        is_options: isOptions,
+        side: order.side,
+        qty: parseFloat(order.qty || order.filled_qty || '0'),
+        filled_price: parseFloat(order.filled_avg_price || '0'),
+        filled_at: order.filled_at || order.updated_at,
+        dollar_value:
+          parseFloat(order.qty || '0') *
+          parseFloat(order.filled_avg_price || '0') *
+          (isOptions ? 100 : 1),
+        order_type: isOptions ? 'options' : 'stock',
+      };
+    });
 
     const signalPerformance: Record<string, { count: number; wins: number; losses: number }> =
       {};
@@ -101,6 +121,8 @@ export async function GET() {
         equity,
         win_rate: winRate,
         journal_count: journal.length,
+        options_count: optionsTrades.length,
+        stock_count: stockTrades.length,
       },
       trade_history: tradeHistory,
       signal_performance: signalPerformance,

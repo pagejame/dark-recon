@@ -183,6 +183,11 @@ export default function OptionsChain({
         qty: orderQty,
         side: 'buy',
         type: orderType,
+        ticker: selectedContract.underlying,
+        strike: selectedContract.strike,
+        expiration: selectedContract.expiration,
+        option_type: selectedContract.type,
+        mid_price: selectedContract.mid,
       };
 
       if (orderType === 'limit' && limitPrice) {
@@ -200,7 +205,8 @@ export default function OptionsChain({
       if (!res.ok) throw new Error(data.error || 'Order failed');
 
       setOrderResult(
-        `✓ Order submitted — ${orderQty} contract${orderQty > 1 ? 's' : ''} of ${selectedContract.symbol}`
+        data.message ||
+          `✓ Order submitted — ${orderQty} contract${orderQty > 1 ? 's' : ''} of ${selectedContract.symbol}`
       );
       setSelectedContract(null);
     } catch (e) {
