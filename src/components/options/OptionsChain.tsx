@@ -222,8 +222,23 @@ export default function OptionsChain({
 
   const currentPrice = chain?.current_price || 0;
 
+  const scrollToOrderPanel = () => {
+    setTimeout(() => {
+      document.getElementById('options-order-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  };
+
   return (
     <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+      <style>{`
+        .options-chain-row:hover {
+          background: #3d9aff10 !important;
+        }
+        @keyframes optionsPanelIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
       <div
         style={{
           display: 'flex',
@@ -379,197 +394,17 @@ export default function OptionsChain({
         </div>
       )}
 
-      {!loading && displayContracts.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: '#0d1117', borderBottom: '1px solid #1e2a3a' }}>
-                {[
-                  'STRIKE',
-                  'BID',
-                  'ASK',
-                  'MID',
-                  'IV',
-                  'Δ DELTA',
-                  'θ THETA',
-                  'VOL',
-                  'OI',
-                  'DTE',
-                  '',
-                ].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      padding: '8px 10px',
-                      fontFamily: 'monospace',
-                      fontSize: 8,
-                      letterSpacing: 2,
-                      color: '#7a8fa8',
-                      textAlign: 'left',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {displayContracts.map((contract) => {
-                const isSelected = selectedContract?.symbol === contract.symbol;
-                const isSuggestedRow = isSuggested(contract);
-                const itm = contract.in_the_money;
-
-                return (
-                  <tr
-                    key={contract.symbol}
-                    onClick={() => {
-                      setSelectedContract(isSelected ? null : contract);
-                      if (!isSelected && contract.mid > 0) {
-                        setLimitPrice(contract.mid.toFixed(2));
-                      }
-                    }}
-                    style={{
-                      background: isSelected
-                        ? '#3d9aff15'
-                        : isSuggestedRow
-                          ? '#ffd70008'
-                          : itm
-                            ? '#00ff8806'
-                            : 'transparent',
-                      borderBottom: '1px solid #1e2a3a',
-                      cursor: 'pointer',
-                      borderLeft: isSuggestedRow
-                        ? '2px solid #ffd700'
-                        : isSelected
-                          ? '2px solid #3d9aff'
-                          : '2px solid transparent',
-                    }}
-                  >
-                    <td
-                      style={{
-                        padding: '8px 10px',
-                        fontFamily: 'monospace',
-                        fontWeight: 700,
-                        color: itm ? '#00ff88' : '#e8edf5',
-                      }}
-                    >
-                      ${contract.strike.toFixed(0)}
-                      {isSuggestedRow && (
-                        <span style={{ marginLeft: 4, color: '#ffd700', fontSize: 9 }}>★</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#7a8fa8' }}>
-                      ${contract.bid.toFixed(2)}
-                    </td>
-                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#7a8fa8' }}>
-                      ${contract.ask.toFixed(2)}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 10px',
-                        fontFamily: 'monospace',
-                        fontWeight: 700,
-                        color: '#e8edf5',
-                      }}
-                    >
-                      ${contract.mid.toFixed(2)}
-                    </td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <IVBar iv={contract.implied_volatility} />
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 10px',
-                        fontFamily: 'monospace',
-                        color: contract.delta && contract.delta > 0.5 ? '#00ff88' : '#7a8fa8',
-                      }}
-                    >
-                      {contract.delta?.toFixed(2) ?? '—'}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 10px',
-                        fontFamily: 'monospace',
-                        color: '#ff3d5a',
-                      }}
-                    >
-                      {contract.theta?.toFixed(3) ?? '—'}
-                    </td>
-                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#7a8fa8' }}>
-                      {contract.volume.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#7a8fa8' }}>
-                      {contract.open_interest.toLocaleString()}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 10px',
-                        fontFamily: 'monospace',
-                        color:
-                          contract.days_to_expiry < 14
-                            ? '#ff3d5a'
-                            : contract.days_to_expiry < 30
-                              ? '#ffd700'
-                              : '#7a8fa8',
-                      }}
-                    >
-                      {contract.days_to_expiry}d
-                    </td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedContract(contract);
-                          setLimitPrice(contract.mid.toFixed(2));
-                        }}
-                        style={{
-                          padding: '4px 10px',
-                          background: '#00ff8815',
-                          border: '1px solid #00ff8840',
-                          borderRadius: 6,
-                          color: '#00ff88',
-                          fontFamily: 'monospace',
-                          fontSize: 8,
-                          letterSpacing: 1,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        BUY
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {!loading && !error && displayContracts.length === 0 && chain && (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: 32,
-            color: '#7a8fa8',
-            fontFamily: 'monospace',
-            fontSize: 10,
-            letterSpacing: 2,
-          }}
-        >
-          NO CONTRACTS FOUND — TRY DIFFERENT EXPIRATION
-        </div>
-      )}
-
       {selectedContract && (
         <div
+          id="options-order-panel"
           style={{
-            marginTop: 16,
+            marginBottom: 16,
             background: '#111620',
-            border: '1px solid #3d9aff',
+            border: '2px solid #3d9aff',
+            boxShadow: '0 0 20px #3d9aff20',
             borderRadius: 10,
             padding: 20,
+            animation: 'optionsPanelIn 0.3s ease-out',
           }}
         >
           <div
@@ -853,6 +688,202 @@ export default function OptionsChain({
               {executing ? 'EXECUTING...' : `BUY ${orderQty} CONTRACT${orderQty > 1 ? 'S' : ''}`}
             </button>
           </div>
+        </div>
+      )}
+
+      {!loading && displayContracts.length > 0 && (
+        <>
+          <div style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068', letterSpacing: 1, marginBottom: 8 }}>
+            CLICK ANY ROW OR HIT BUY TO SELECT A CONTRACT → ORDER PANEL APPEARS ABOVE
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#0d1117', borderBottom: '1px solid #1e2a3a' }}>
+                {[
+                  'STRIKE',
+                  'BID',
+                  'ASK',
+                  'MID',
+                  'IV',
+                  'Δ DELTA',
+                  'θ THETA',
+                  'VOL',
+                  'OI',
+                  'DTE',
+                  '',
+                ].map((h) => (
+                  <th
+                    key={h}
+                    style={{
+                      padding: '8px 10px',
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      letterSpacing: 2,
+                      color: '#7a8fa8',
+                      textAlign: 'left',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {displayContracts.map((contract) => {
+                const isSelected = selectedContract?.symbol === contract.symbol;
+                const isSuggestedRow = isSuggested(contract);
+                const itm = contract.in_the_money;
+
+                return (
+                  <tr
+                    key={contract.symbol}
+                    className="options-chain-row"
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedContract(null);
+                        return;
+                      }
+                      setSelectedContract(contract);
+                      if (contract.mid > 0) {
+                        setLimitPrice(contract.mid.toFixed(2));
+                      }
+                      scrollToOrderPanel();
+                    }}
+                    style={{
+                      background: isSelected
+                        ? '#3d9aff15'
+                        : isSuggestedRow
+                          ? '#ffd70008'
+                          : itm
+                            ? '#00ff8806'
+                            : 'transparent',
+                      borderBottom: '1px solid #1e2a3a',
+                      cursor: 'pointer',
+                      borderLeft: isSuggestedRow
+                        ? '2px solid #ffd700'
+                        : isSelected
+                          ? '2px solid #3d9aff'
+                          : '2px solid transparent',
+                    }}
+                  >
+                    <td
+                      style={{
+                        padding: '8px 10px',
+                        fontFamily: 'monospace',
+                        fontWeight: 700,
+                        color: itm ? '#00ff88' : '#e8edf5',
+                      }}
+                    >
+                      ${contract.strike.toFixed(0)}
+                      {isSuggestedRow && (
+                        <span style={{ marginLeft: 4, color: '#ffd700', fontSize: 9 }}>★</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#7a8fa8' }}>
+                      ${contract.bid.toFixed(2)}
+                    </td>
+                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#7a8fa8' }}>
+                      ${contract.ask.toFixed(2)}
+                    </td>
+                    <td
+                      style={{
+                        padding: '8px 10px',
+                        fontFamily: 'monospace',
+                        fontWeight: 700,
+                        color: '#e8edf5',
+                      }}
+                    >
+                      ${contract.mid.toFixed(2)}
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <IVBar iv={contract.implied_volatility} />
+                    </td>
+                    <td
+                      style={{
+                        padding: '8px 10px',
+                        fontFamily: 'monospace',
+                        color: contract.delta && contract.delta > 0.5 ? '#00ff88' : '#7a8fa8',
+                      }}
+                    >
+                      {contract.delta?.toFixed(2) ?? '—'}
+                    </td>
+                    <td
+                      style={{
+                        padding: '8px 10px',
+                        fontFamily: 'monospace',
+                        color: '#ff3d5a',
+                      }}
+                    >
+                      {contract.theta?.toFixed(3) ?? '—'}
+                    </td>
+                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#7a8fa8' }}>
+                      {contract.volume.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#7a8fa8' }}>
+                      {contract.open_interest.toLocaleString()}
+                    </td>
+                    <td
+                      style={{
+                        padding: '8px 10px',
+                        fontFamily: 'monospace',
+                        color:
+                          contract.days_to_expiry < 14
+                            ? '#ff3d5a'
+                            : contract.days_to_expiry < 30
+                              ? '#ffd700'
+                              : '#7a8fa8',
+                      }}
+                    >
+                      {contract.days_to_expiry}d
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSelectedContract(contract);
+                          setLimitPrice(contract.mid.toFixed(2));
+                          scrollToOrderPanel();
+                        }}
+                        style={{
+                          padding: '4px 10px',
+                          background: '#00ff8815',
+                          border: '1px solid #00ff8840',
+                          borderRadius: 6,
+                          color: '#00ff88',
+                          fontFamily: 'monospace',
+                          fontSize: 8,
+                          letterSpacing: 1,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        BUY
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        </>
+      )}
+
+      {!loading && !error && displayContracts.length === 0 && chain && (
+        <div
+          style={{
+            textAlign: 'center',
+            padding: 32,
+            color: '#7a8fa8',
+            fontFamily: 'monospace',
+            fontSize: 10,
+            letterSpacing: 2,
+          }}
+        >
+          NO CONTRACTS FOUND — TRY DIFFERENT EXPIRATION
         </div>
       )}
 
