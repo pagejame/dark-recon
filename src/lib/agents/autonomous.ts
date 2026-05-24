@@ -452,6 +452,10 @@ ${status}
 ACTIONS TAKEN IN LAST 30 MINUTES (avoid exact repetition):
 ${recentActionSummary}
 
+AVAILABLE_ACTIONS:
+- Dismiss triggered price alerts: GET /api/alerts/dismiss
+- Check and update alerts: GET /api/alerts/check
+
 DECISION RULES:
 - AUTO_EXECUTE: Stop loss creation, alert dismissal, data refreshes, rebalance trims (in full autonomy)
 - AUTO_EXECUTE (full autonomy only): Trade entries with conviction ≥ ${autonomy.min_conviction}, position closes on stop breach

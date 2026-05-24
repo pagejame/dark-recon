@@ -18,7 +18,14 @@ export async function GET(request: NextRequest) {
     const supabase = createAdminClient();
 
     const report = await generateWeeklyAuditReport();
-    const reportId = await saveWeeklyAuditReport(report);
+
+    let reportId: string | null = null;
+    try {
+      reportId = await saveWeeklyAuditReport(report);
+    } catch (saveError) {
+      console.error('Failed to save report to DB (non-fatal):', saveError);
+    }
+
     await sendWeeklyAuditEmail(report);
 
     await supabase.from('cron_runs').insert({
@@ -30,6 +37,7 @@ export async function GET(request: NextRequest) {
         trades: report.trades.total_executed,
         win_rate: report.trades.win_rate,
         recommendations_count: report.recommendations.length,
+        saved_to_db: reportId !== null,
       },
       ran_at: new Date().toISOString(),
     });
@@ -50,7 +58,14 @@ export async function GET(request: NextRequest) {
 export async function POST() {
   try {
     const report = await generateWeeklyAuditReport();
-    const reportId = await saveWeeklyAuditReport(report);
+
+    let reportId: string | null = null;
+    try {
+      reportId = await saveWeeklyAuditReport(report);
+    } catch (saveError) {
+      console.error('Failed to save report to DB (non-fatal):', saveError);
+    }
+
     await sendWeeklyAuditEmail(report);
     return NextResponse.json({ success: true, report_id: reportId, report });
   } catch (error) {

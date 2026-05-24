@@ -475,12 +475,14 @@ export async function sendWeeklyAuditEmail(report: WeeklyAuditReport): Promise<v
 export async function saveWeeklyAuditReport(report: WeeklyAuditReport): Promise<string> {
   const supabase = createAdminClient();
 
+  const reportPayload = JSON.parse(JSON.stringify(report)) as WeeklyAuditReport;
+
   const { data, error } = await supabase
     .from('weekly_audit_reports')
     .insert({
       week_start: report.week_start,
       week_end: report.week_end,
-      report_data: report,
+      report_data: reportPayload,
       claude_analysis: report.claude_analysis,
       recommendations: report.recommendations,
       performance_summary: report.performance,

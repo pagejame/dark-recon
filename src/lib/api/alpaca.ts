@@ -48,7 +48,7 @@ export async function submitMarketOrder({
   const res = await fetch(`${ALPACA_BASE_URL}/v2/orders`, {
     method: 'POST',
     headers: alpacaHeaders,
-    body: JSON.stringify({ symbol, qty, side, type, time_in_force }),
+    body: JSON.stringify({ symbol, qty: qty.toString(), side, type, time_in_force }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

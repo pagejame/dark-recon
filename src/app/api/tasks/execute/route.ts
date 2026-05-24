@@ -146,7 +146,20 @@ const DIRECT_ACTIONS: { keywords: string[]; action: TaskAction }[] = [
     },
   },
   {
-    keywords: ['dismiss alert', 'triggered alert', 'clear alert', 'price alert', 'nvda alert', 'xle alert', 'dismiss', 'alert', 'clear triggered'],
+    keywords: ['dismiss alert', 'triggered alert', 'clear alert', 'dismiss triggered', 'alert dismiss'],
+    action: {
+      action_type: 'api',
+      endpoint: '/api/alerts/dismiss',
+      method: 'GET',
+      body: null,
+      label: 'DISMISS ALERTS',
+      explanation: 'Dismisses all triggered price alerts',
+      requires_confirmation: false,
+      confirmation_message: null,
+    },
+  },
+  {
+    keywords: ['check alert', 'price alert', 'nvda alert', 'xle alert', 'alert check', 'clear triggered', 'update alert'],
     action: {
       action_type: 'api',
       endpoint: '/api/alerts/check',

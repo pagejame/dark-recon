@@ -1,4 +1,28 @@
 import { getPositions, getAccount, submitMarketOrder } from '@/lib/api/alpaca';
+
+const ALPACA_BASE_URL = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets';
+
+async function hasPendingSellOrder(ticker: string): Promise<boolean> {
+  try {
+    const ordersRes = await fetch(
+      `${ALPACA_BASE_URL}/v2/orders?status=open&symbols=${encodeURIComponent(ticker)}`,
+      {
+        headers: {
+          'APCA-API-KEY-ID': process.env.ALPACA_API_KEY || '',
+          'APCA-API-SECRET-KEY': process.env.ALPACA_API_SECRET || '',
+        },
+      }
+    );
+    if (!ordersRes.ok) return false;
+    const pendingOrders = await ordersRes.json();
+    return (
+      Array.isArray(pendingOrders) &&
+      pendingOrders.some((o: { side?: string }) => o.side === 'sell')
+    );
+  } catch {
+    return false;
+  }
+}
 import { getStrategyConfig } from '@/lib/services/strategy';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAutonomyConfig } from '@/lib/services/autonomy';
@@ -113,10 +137,19 @@ export async function runRebalanceCheck(): Promise<RebalanceAction[]> {
   for (const action of actions.filter((a) => a.action !== 'hold' && a.urgency === 'immediate')) {
     if (action.action === 'trim' && autonomy.enabled && action.shares_to_sell) {
       try {
+        if (await hasPendingSellOrder(action.ticker)) {
+          console.log(
+            `Skipping rebalance sell on ${action.ticker} — existing sell order pending`
+          );
+          continue;
+        }
+
         await submitMarketOrder({
           symbol: action.ticker,
           qty: action.shares_to_sell,
           side: 'sell',
+          type: 'market',
+          time_in_force: 'day',
         });
 
         await logAuditEvent({
