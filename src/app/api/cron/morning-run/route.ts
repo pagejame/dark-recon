@@ -9,6 +9,7 @@ import { runAutopilot } from '@/lib/agents/autopilot';
 import { saveBriefing } from '@/lib/db/briefings';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { takeStrategySnapshot } from '@/lib/services/strategy';
+import { buildTradeQueue, saveTradeQueue } from '@/lib/agents/trade-queue';
 
 export const maxDuration = 60;
 
@@ -100,6 +101,15 @@ export async function GET(request: NextRequest) {
   } else {
     results.strategy_snapshot = 'FAILED';
     console.error('Strategy snapshot failed:', snapshotResult.reason);
+  }
+
+  try {
+    const trades = await buildTradeQueue();
+    await saveTradeQueue(trades);
+    results.trade_queue = `SUCCESS — ${trades.length} trades queued`;
+  } catch (e) {
+    results.trade_queue = 'FAILED';
+    console.error('Trade queue build error:', e);
   }
 
   try {

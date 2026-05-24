@@ -7,16 +7,16 @@ import {
   Bot,
   Zap,
   TrendingUp,
-  Layers,
+  ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/autopilot', label: 'Autopilot', icon: Bot },
+  { href: '/queue', label: 'Queue', icon: ListChecks },
   { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
   { href: '/signals', label: 'Signals', icon: Zap },
-  { href: '/options', label: 'Options', icon: Layers },
+  { href: '/autopilot', label: 'Autopilot', icon: Bot },
 ];
 
 export default function MobileNav() {

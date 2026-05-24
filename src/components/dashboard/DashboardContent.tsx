@@ -8,6 +8,7 @@ import TopSignalsRow from '@/components/dashboard/TopSignalsRow';
 import CatalystsWidget from '@/components/dashboard/CatalystsWidget';
 import AgentStatusGrid, { type AgentCardData } from '@/components/dashboard/AgentStatusGrid';
 import CronStatusWidget from '@/components/dashboard/CronStatusWidget';
+import TradeQueuePreview from '@/components/dashboard/TradeQueuePreview';
 import type { ScanResult } from '@/lib/agents/scanner';
 import type { MorningBriefing as MorningBriefingData } from '@/lib/agents/briefing';
 
@@ -532,6 +533,8 @@ export default function DashboardContent() {
           </div>
         )}
       </div>
+
+      <TradeQueuePreview />
 
       <TopSignalsRow
         signals={signals}

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Bot,
+  ListChecks,
   Radar,
   Zap,
   Calendar,
@@ -27,6 +28,7 @@ import { useState } from 'react';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/autopilot', label: 'Autopilot', icon: Bot },
+  { href: '/queue', label: 'Trade Queue', icon: ListChecks },
   { href: '/strategy', label: 'Strategy', icon: LineChart },
   { href: '/smartmoney', label: 'Smart Money', icon: TrendingUp },
   { href: '/intelligence', label: 'Intelligence', icon: Radio },
