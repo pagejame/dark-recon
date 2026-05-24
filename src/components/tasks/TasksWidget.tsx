@@ -107,84 +107,95 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
     setExecutingTask(task.id);
     setTaskResults((prev) => ({
       ...prev,
-      [task.id]: { success: false, message: '⟳ AI analyzing task...' },
+      [task.id]: { success: false, message: '⟳ Analyzing...' },
     }));
 
     try {
-      const res = await fetch('/api/tasks/execute', {
+      const planRes = await fetch('/api/tasks/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: task.title,
-          notes: task.notes,
-          task_id: task.id,
-        }),
+        body: JSON.stringify({ title: task.title, notes: task.notes }),
       });
 
-      let data = await res.json();
-
-      if (!res.ok || data.error) {
+      const planData = await planRes.json();
+      if (!planRes.ok || planData.error || !planData.action) {
         setTaskResults((prev) => ({
           ...prev,
-          [task.id]: { success: false, message: data.error || 'Executor failed' },
+          [task.id]: {
+            success: false,
+            message: planData.error || 'Could not determine action',
+          },
         }));
+        setExecutingTask(null);
         return;
       }
 
-      // Confirmation required before executing destructive actions
-      if (data.action?.requires_confirmation && !data.executed) {
-        const confirmed = window.confirm(data.action.confirmation_message || 'Are you sure?');
+      const action = planData.action;
+
+      if (action.action_type === 'nav') {
+        setTaskResults((prev) => ({
+          ...prev,
+          [task.id]: { success: true, message: `→ Opening ${action.endpoint}...` },
+        }));
+        setExecutingTask(null);
+        setTimeout(() => {
+          window.location.href = action.endpoint;
+        }, 600);
+        return;
+      }
+
+      if (action.action_type === 'manual') {
+        setTaskResults((prev) => ({
+          ...prev,
+          [task.id]: { success: false, message: `ℹ️ ${action.explanation}` },
+        }));
+        setExecutingTask(null);
+        return;
+      }
+
+      if (action.requires_confirmation) {
+        const confirmed = window.confirm(action.confirmation_message || 'Are you sure?');
         if (!confirmed) {
           setTaskResults((prev) => ({
             ...prev,
             [task.id]: { success: false, message: 'Cancelled' },
           }));
-          return;
-        }
-
-        setTaskResults((prev) => ({
-          ...prev,
-          [task.id]: { success: false, message: '⟳ Executing...' },
-        }));
-
-        const confirmRes = await fetch('/api/tasks/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: task.title,
-            notes: task.notes,
-            task_id: task.id,
-            confirmed: true,
-            action: data.action,
-          }),
-        });
-        data = await confirmRes.json();
-
-        if (!confirmRes.ok || data.error) {
-          setTaskResults((prev) => ({
-            ...prev,
-            [task.id]: { success: false, message: data.error || 'Execution failed' },
-          }));
+          setExecutingTask(null);
           return;
         }
       }
 
-      // Navigation tasks — client-side redirect
-      if (!data.executed && data.action?.action_type === 'nav' && data.action?.endpoint) {
-        setTaskResults((prev) => ({
-          ...prev,
-          [task.id]: { success: true, message: `→ Going to ${data.action.endpoint}...` },
-        }));
-        setTimeout(() => {
-          window.location.href = data.action.endpoint;
-        }, 800);
-        return;
+      setTaskResults((prev) => ({
+        ...prev,
+        [task.id]: { success: false, message: `⟳ ${action.label}...` },
+      }));
+
+      const execOptions: RequestInit = {
+        method: action.method || 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      };
+
+      if (action.body && ['POST', 'PATCH', 'PUT'].includes(action.method || '')) {
+        execOptions.body = JSON.stringify(action.body);
       }
 
-      const success = data.success;
-      const message = data.message || (success ? '✓ Done' : 'Failed');
+      const execRes = await fetch(action.endpoint, execOptions);
+      let execData: Record<string, unknown> = {};
 
-      setTaskResults((prev) => ({ ...prev, [task.id]: { success, message } }));
+      try {
+        const text = await execRes.text();
+        if (text) execData = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        // non-JSON response is ok
+      }
+
+      const success = execRes.ok && execData.success !== false && !execData.error;
+      const resultMsg =
+        (execData.message as string | undefined) ||
+        (execData.launch_message as string | undefined) ||
+        (success ? `✓ ${action.explanation}` : (execData.error as string) || `Failed (${execRes.status})`);
+
+      setTaskResults((prev) => ({ ...prev, [task.id]: { success, message: resultMsg } }));
 
       if (success) {
         setTimeout(() => {
