@@ -21,6 +21,7 @@ import {
   Trophy,
   LineChart,
   Layers,
+  Rocket,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -43,6 +44,7 @@ const navItems = [
   { href: '/alerts', label: 'Alerts', icon: Bell },
   { href: '/journal', label: 'Trade Journal', icon: BookOpen },
   { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/launch', label: 'Launch Checklist', icon: Rocket },
 ];
 
 export default function Sidebar() {
