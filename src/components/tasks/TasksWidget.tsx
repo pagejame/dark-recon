@@ -19,10 +19,12 @@ interface Task {
 
 interface TaskAction {
   label: string;
-  endpoint: string;
-  method: string;
+  endpoint?: string;
+  method?: string;
   body?: Record<string, unknown>;
   isNav: boolean;
+  navUrl?: string;
+  confirmText?: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -117,8 +119,11 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
 
   function inferAction(task: Task): TaskAction | null {
     const title = task.title.toLowerCase();
+    const stored = task.action_type;
+    const endpoint = task.action_endpoint;
 
-    if (task.action_type === 'api' && task.action_endpoint) {
+    // --- STORED API ACTIONS (already execute correctly) ---
+    if (stored === 'api' && endpoint) {
       const labels: Record<string, string> = {
         '/api/trading/orders/cancel-all': 'CANCEL ALL ORDERS',
         '/api/trading/positions/close-all': 'CLOSE ALL POSITIONS',
@@ -128,77 +133,56 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
         '/api/autopilot?refresh=true': 'RUN AUTOPILOT',
         '/api/queue': 'BUILD QUEUE',
         '/api/settings': 'ENABLE NOW',
+        '/api/intelligence?refresh=true': 'RUN SWEEP',
+        '/api/smartmoney': 'REFRESH DATA',
+        '/api/scan': 'RUN SCANNER',
       };
       return {
-        label: labels[task.action_endpoint] || 'EXECUTE',
-        endpoint: task.action_endpoint,
+        label: labels[endpoint] || 'EXECUTE',
+        endpoint,
         method: task.action_method || 'GET',
         body: task.action_body,
         isNav: false,
+        confirmText: endpoint.includes('positions/close')
+          ? 'This will close ALL open positions. Are you sure?'
+          : endpoint.includes('orders/cancel')
+            ? 'This will cancel ALL pending orders. Are you sure?'
+            : undefined,
       };
     }
 
-    if (task.action_type === 'nav' && task.action_endpoint) {
+    if (stored === 'nav' && endpoint) {
       const labels: Record<string, string> = {
-        '/queue': 'OPEN QUEUE',
-        '/recon': 'OPEN WATCHLIST',
-        '/strategy': 'OPEN STRATEGY',
-        '/alerts': 'SET ALERTS',
-        '/intelligence': 'VIEW INTEL',
-        '/smartmoney': 'SMART MONEY',
-        '/settings': 'OPEN SETTINGS',
-        '/portfolio': 'VIEW PORTFOLIO',
-        '/launch': 'RUN CHECKLIST',
+        '/queue': 'OPEN QUEUE →',
+        '/recon': 'OPEN WATCHLIST →',
+        '/strategy': 'OPEN STRATEGY →',
+        '/alerts': 'SET ALERTS →',
+        '/portfolio': 'VIEW PORTFOLIO →',
+        '/signals': 'OPEN SIGNALS →',
       };
       return {
-        label: labels[task.action_endpoint] || 'GO THERE',
-        endpoint: task.action_endpoint,
-        method: 'GET',
+        label: labels[endpoint] || 'GO THERE →',
         isNav: true,
+        navUrl: endpoint,
       };
     }
 
-    if (title.includes('cancel') && title.includes('order')) {
+    // --- INTELLIGENCE / DATA REFRESH TASKS ---
+    if (title.includes('reddit') || title.includes('intelligence') || title.includes('sweep')) {
       return {
-        label: 'CANCEL ALL ORDERS',
-        endpoint: '/api/trading/orders/cancel-all',
-        method: 'DELETE',
-        isNav: false,
-      };
-    }
-    if (title.includes('close') && title.includes('position')) {
-      return {
-        label: 'CLOSE ALL POSITIONS',
-        endpoint: '/api/trading/positions/close-all',
-        method: 'DELETE',
-        isNav: false,
-      };
-    }
-    if (title.includes('clear') && title.includes('queue')) {
-      return {
-        label: 'CLEAR QUEUE',
-        endpoint: '/api/queue/clear',
-        method: 'DELETE',
-        isNav: false,
-      };
-    }
-    if (title.includes('launch') || title.includes('health')) {
-      return {
-        label: 'RUN HEALTH CHECK',
-        endpoint: '/api/system/health',
+        label: 'RUN SWEEP',
+        endpoint: '/api/intelligence?refresh=true',
         method: 'GET',
         isNav: false,
       };
     }
-    if (title.includes('email')) {
-      return {
-        label: 'SEND TEST EMAIL',
-        endpoint: '/api/email/test',
-        method: 'POST',
-        isNav: false,
-      };
+
+    if (title.includes('congressional') || title.includes('smart money')) {
+      return { label: 'REFRESH DATA', endpoint: '/api/smartmoney', method: 'GET', isNav: false };
     }
-    if (title.includes('queue') && title.includes('build')) {
+
+    // --- TRADE QUEUE TASKS ---
+    if ((title.includes('review') && title.includes('queue')) || (title.includes('approve') && title.includes('trade'))) {
       return {
         label: 'BUILD QUEUE',
         endpoint: '/api/queue',
@@ -207,29 +191,112 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
         isNav: false,
       };
     }
-    if (title.includes('queue')) {
-      return { label: 'OPEN QUEUE', endpoint: '/queue', method: 'GET', isNav: true };
+
+    if (title.includes('trade queue') || title.includes('clear queue')) {
+      return { label: 'CLEAR QUEUE', endpoint: '/api/queue/clear', method: 'DELETE', isNav: false };
     }
-    if (title.includes('watchlist')) {
-      return { label: 'OPEN WATCHLIST', endpoint: '/recon', method: 'GET', isNav: true };
+
+    // --- AUTOPILOT TASKS ---
+    if (title.includes('autopilot') || title.includes('run autopilot')) {
+      return {
+        label: 'RUN AUTOPILOT',
+        endpoint: '/api/autopilot?refresh=true',
+        method: 'GET',
+        isNav: false,
+      };
     }
+
+    // --- POSITION / ORDER TASKS ---
+    if (title.includes('cancel') && (title.includes('order') || title.includes('alpaca'))) {
+      return {
+        label: 'CANCEL ALL ORDERS',
+        endpoint: '/api/trading/orders/cancel-all',
+        method: 'DELETE',
+        isNav: false,
+        confirmText: 'Cancel all pending Alpaca orders?',
+      };
+    }
+
+    if (title.includes('close') && title.includes('position')) {
+      return {
+        label: 'CLOSE ALL POSITIONS',
+        endpoint: '/api/trading/positions/close-all',
+        method: 'DELETE',
+        isNav: false,
+        confirmText: 'Close ALL open positions and reset to cash?',
+      };
+    }
+
+    // --- HEALTH / LAUNCH TASKS ---
+    if (title.includes('launch') || title.includes('health check') || title.includes('checklist')) {
+      return { label: 'RUN HEALTH CHECK', endpoint: '/api/system/health', method: 'GET', isNav: false };
+    }
+
+    // --- EMAIL TASKS ---
+    if (title.includes('email') || title.includes('resend')) {
+      return { label: 'SEND TEST EMAIL', endpoint: '/api/email/test', method: 'POST', isNav: false };
+    }
+
+    // --- SIGNAL / SCANNER TASKS ---
+    if (title.includes('signal') || title.includes('scanner')) {
+      return { label: 'RUN SCANNER', endpoint: '/api/scan', method: 'GET', isNav: false };
+    }
+
+    // --- SETTINGS TASKS (enable/toggle) ---
+    if (
+      title.includes('enable') ||
+      title.includes('toggle') ||
+      title.includes('auto-pop') ||
+      title.includes('autopop')
+    ) {
+      return {
+        label: 'ENABLE NOW',
+        endpoint: '/api/settings',
+        method: 'PATCH',
+        body: { key: 'watchlist_autopop_enabled', value: { enabled: true } },
+        isNav: false,
+      };
+    }
+
+    // --- WATCHLIST TASK ---
+    if (title.includes('watchlist') || title.includes('recon feed') || title.includes('tickers')) {
+      return { label: 'OPEN WATCHLIST →', isNav: true, navUrl: '/recon' };
+    }
+
+    // --- STRATEGY / DECISION LOG ---
     if (title.includes('strategy') || title.includes('decision')) {
-      return { label: 'OPEN STRATEGY', endpoint: '/strategy', method: 'GET', isNav: true };
+      return { label: 'OPEN STRATEGY →', isNav: true, navUrl: '/strategy' };
     }
-    if (title.includes('alert')) {
-      return { label: 'SET ALERTS', endpoint: '/alerts', method: 'GET', isNav: true };
+
+    // --- PRICE ALERTS ---
+    if (title.includes('alert') || title.includes('stop loss')) {
+      return { label: 'SET ALERTS →', isNav: true, navUrl: '/alerts' };
     }
-    if (title.includes('portfolio') || title.includes('position')) {
-      return { label: 'VIEW PORTFOLIO', endpoint: '/portfolio', method: 'GET', isNav: true };
+
+    // --- PORTFOLIO ---
+    if (title.includes('portfolio') || title.includes('position') || title.includes('holding')) {
+      return { label: 'VIEW PORTFOLIO →', isNav: true, navUrl: '/portfolio' };
     }
-    if (title.includes('settings') || title.includes('enable')) {
-      return { label: 'OPEN SETTINGS', endpoint: '/settings', method: 'GET', isNav: true };
+
+    // --- QUEUE (view) ---
+    if (title.includes('queue')) {
+      return { label: 'OPEN QUEUE →', isNav: true, navUrl: '/queue' };
     }
-    if (title.includes('intelligence') || title.includes('reddit')) {
-      return { label: 'VIEW INTEL', endpoint: '/intelligence', method: 'GET', isNav: true };
+
+    // Category fallbacks
+    if (task.category === 'urgent') {
+      return {
+        label: 'CANCEL ALL ORDERS',
+        endpoint: '/api/trading/orders/cancel-all',
+        method: 'DELETE',
+        isNav: false,
+      };
     }
-    if (title.includes('congressional') || title.includes('smart money')) {
-      return { label: 'SMART MONEY', endpoint: '/smartmoney', method: 'GET', isNav: true };
+    if (task.category === 'trading') {
+      return { label: 'OPEN SIGNALS →', isNav: true, navUrl: '/signals' };
+    }
+    if (task.category === 'platform') {
+      return { label: 'RUN HEALTH CHECK', endpoint: '/api/system/health', method: 'GET', isNav: false };
     }
 
     return null;
@@ -239,41 +306,55 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
     const action = inferAction(task);
     if (!action) return;
 
-    if (action.isNav) {
-      window.location.href = action.endpoint;
+    // Handle navigation
+    if (action.isNav && action.navUrl) {
+      window.location.href = action.navUrl;
       return;
     }
+
+    // Handle confirmation
+    if (action.confirmText) {
+      const confirmed = window.confirm(action.confirmText);
+      if (!confirmed) return;
+    }
+
+    if (!action.endpoint) return;
 
     setExecutingTask(task.id);
     setTaskResults((prev) => ({ ...prev, [task.id]: { success: false, message: '' } }));
 
     try {
       const options: RequestInit = {
-        method: action.method,
+        method: action.method || 'GET',
         headers: { 'Content-Type': 'application/json' },
       };
 
-      if (action.body && ['POST', 'PATCH', 'PUT'].includes(action.method)) {
+      if (action.body && ['POST', 'PATCH', 'PUT'].includes(action.method || '')) {
         options.body = JSON.stringify(action.body);
       }
 
       const res = await fetch(action.endpoint, options);
-      const data = await res.json();
 
-      const success = data.success !== false && !data.error;
-      let message =
-        data.message ||
-        data.launch_message ||
+      // Handle non-JSON responses
+      const contentType = res.headers.get('content-type');
+      let data: Record<string, unknown> = {};
+      if (contentType?.includes('application/json')) {
+        data = await res.json();
+      } else {
+        data = { success: res.ok, message: res.ok ? '✓ Done' : 'Request failed' };
+      }
+
+      const success = data.success !== false && !data.error && res.ok;
+      const message =
+        (data.message as string | undefined) ||
+        (data.launch_message as string | undefined) ||
         (typeof data.queued === 'number' ? `✓ ${data.queued} trade(s) queued` : undefined) ||
         (data.overall_action ? `✓ Autopilot: ${data.overall_action}` : undefined) ||
-        (success ? '✓ Done' : data.error || 'Something went wrong');
-
-      if (action.endpoint.includes('/api/system/health') && data.ready_for_launch === false) {
-        message = data.launch_message || message;
-      }
+        (success ? '✓ Completed successfully' : (data.error as string) || 'Something went wrong');
 
       setTaskResults((prev) => ({ ...prev, [task.id]: { success, message } }));
 
+      // Auto-complete task on success after 2 seconds
       if (success) {
         setTimeout(() => {
           void completeTask(task.id);
@@ -284,7 +365,7 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
         ...prev,
         [task.id]: {
           success: false,
-          message: e instanceof Error ? e.message : 'Failed',
+          message: e instanceof Error ? e.message : 'Failed to execute',
         },
       }));
     } finally {
@@ -650,7 +731,7 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
                     >
                       {isExecuting
                         ? '⟳ RUNNING...'
-                        : `${action.label} ${action.isNav ? '→' : '⚡'}`}
+                        : `${action.label}${!action.isNav ? ' ⚡' : ''}`}
                     </button>
                     {result && (
                       <div
