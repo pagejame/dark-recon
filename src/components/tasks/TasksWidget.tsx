@@ -11,6 +11,18 @@ interface Task {
   priority: number;
   due_date?: string;
   created_at: string;
+  action_type?: string;
+  action_endpoint?: string;
+  action_method?: string;
+  action_body?: Record<string, unknown>;
+}
+
+interface TaskAction {
+  label: string;
+  endpoint: string;
+  method: string;
+  body?: Record<string, unknown>;
+  isNav: boolean;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -34,6 +46,10 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
   const [newCategory, setNewCategory] = useState('general');
   const [newPriority, setNewPriority] = useState(2);
   const [saving, setSaving] = useState(false);
+  const [executingTask, setExecutingTask] = useState<string | null>(null);
+  const [taskResults, setTaskResults] = useState<
+    Record<string, { success: boolean; message: string }>
+  >({});
 
   const fetchTasks = async () => {
     try {
@@ -99,99 +115,182 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
   const otherTasks = tasks.filter((t) => t.category !== 'urgent' && t.priority !== 1);
   const displayTasks = compact ? tasks.slice(0, 5) : tasks;
 
-  function getTaskAction(task: Task): { label: string; action: () => void } | null {
+  function inferAction(task: Task): TaskAction | null {
     const title = task.title.toLowerCase();
 
-    if (
-      title.includes('alpaca') ||
-      title.includes('limit order') ||
-      title.includes('pending order') ||
-      title.includes('cancel')
-    ) {
-      return { label: 'GO TO PORTFOLIO', action: () => { window.location.href = '/portfolio'; } };
-    }
-    if (
-      title.includes('close all') ||
-      title.includes('open position') ||
-      title.includes('close position')
-    ) {
-      return { label: 'VIEW POSITIONS', action: () => { window.location.href = '/portfolio'; } };
-    }
-    if (
-      title.includes('launch checklist') ||
-      title.includes('run launch') ||
-      title.includes('system check')
-    ) {
-      return { label: 'RUN CHECKLIST', action: () => { window.location.href = '/launch'; } };
-    }
-    if (title.includes('trade queue') || title.includes('approve') || title.includes('queue')) {
-      return { label: 'OPEN QUEUE', action: () => { window.location.href = '/queue'; } };
-    }
-    if (title.includes('watchlist') || title.includes('recon feed') || title.includes('ticker')) {
-      return { label: 'OPEN WATCHLIST', action: () => { window.location.href = '/recon'; } };
-    }
-    if (title.includes('strategy') || title.includes('decision log')) {
-      return { label: 'OPEN STRATEGY', action: () => { window.location.href = '/strategy'; } };
-    }
-    if (title.includes('alert') || title.includes('price alert') || title.includes('stop loss')) {
-      return { label: 'SET ALERTS', action: () => { window.location.href = '/alerts'; } };
-    }
-    if (title.includes('autopilot')) {
-      return { label: 'RUN AUTOPILOT', action: () => { window.location.href = '/autopilot'; } };
-    }
-    if (title.includes('intelligence') || title.includes('sweep') || title.includes('reddit')) {
-      return { label: 'OPEN INTEL', action: () => { window.location.href = '/intelligence'; } };
-    }
-    if (title.includes('congressional') || title.includes('smart money') || title.includes('pelosi')) {
-      return { label: 'SMART MONEY', action: () => { window.location.href = '/smartmoney'; } };
-    }
-    if (title.includes('settings') || title.includes('enable') || title.includes('toggle')) {
-      return { label: 'OPEN SETTINGS', action: () => { window.location.href = '/settings'; } };
-    }
-    if (title.includes('weekly email') || title.includes('email') || title.includes('resend')) {
-      return { label: 'EMAIL SETTINGS', action: () => { window.location.href = '/settings'; } };
-    }
-    if (title.includes('journal') || title.includes('log') || title.includes('record')) {
-      return { label: 'OPEN JOURNAL', action: () => { window.location.href = '/journal'; } };
-    }
-    if (title.includes('portfolio') || title.includes('position') || title.includes('holding')) {
-      return { label: 'VIEW PORTFOLIO', action: () => { window.location.href = '/portfolio'; } };
-    }
-    if (title.includes('options') || title.includes('call') || title.includes('put')) {
-      return { label: 'OPTIONS CHAIN', action: () => { window.location.href = '/options'; } };
-    }
-    if (title.includes('earnings')) {
-      return { label: 'EARNINGS CALENDAR', action: () => { window.location.href = '/earnings'; } };
-    }
-    if (title.includes('thesis')) {
-      return { label: 'THESIS BUILDER', action: () => { window.location.href = '/thesis'; } };
-    }
-    if (title.includes('signal') || title.includes('scanner')) {
-      return { label: 'VIEW SIGNALS', action: () => { window.location.href = '/signals'; } };
-    }
-    if (
-      title.includes('supabase') ||
-      title.includes('database') ||
-      title.includes('clear trade queue')
-    ) {
-      return { label: 'GO TO LAUNCH', action: () => { window.location.href = '/launch'; } };
-    }
-    if (title.includes('dashboard')) {
-      return { label: 'DASHBOARD', action: () => { window.location.href = '/dashboard'; } };
+    if (task.action_type === 'api' && task.action_endpoint) {
+      const labels: Record<string, string> = {
+        '/api/trading/orders/cancel-all': 'CANCEL ALL ORDERS',
+        '/api/trading/positions/close-all': 'CLOSE ALL POSITIONS',
+        '/api/queue/clear': 'CLEAR QUEUE',
+        '/api/system/health': 'RUN HEALTH CHECK',
+        '/api/email/test': 'SEND TEST EMAIL',
+        '/api/autopilot?refresh=true': 'RUN AUTOPILOT',
+        '/api/queue': 'BUILD QUEUE',
+        '/api/settings': 'ENABLE NOW',
+      };
+      return {
+        label: labels[task.action_endpoint] || 'EXECUTE',
+        endpoint: task.action_endpoint,
+        method: task.action_method || 'GET',
+        body: task.action_body,
+        isNav: false,
+      };
     }
 
-    if (task.category === 'trading') {
-      return { label: 'VIEW SIGNALS', action: () => { window.location.href = '/signals'; } };
+    if (task.action_type === 'nav' && task.action_endpoint) {
+      const labels: Record<string, string> = {
+        '/queue': 'OPEN QUEUE',
+        '/recon': 'OPEN WATCHLIST',
+        '/strategy': 'OPEN STRATEGY',
+        '/alerts': 'SET ALERTS',
+        '/intelligence': 'VIEW INTEL',
+        '/smartmoney': 'SMART MONEY',
+        '/settings': 'OPEN SETTINGS',
+        '/portfolio': 'VIEW PORTFOLIO',
+        '/launch': 'RUN CHECKLIST',
+      };
+      return {
+        label: labels[task.action_endpoint] || 'GO THERE',
+        endpoint: task.action_endpoint,
+        method: 'GET',
+        isNav: true,
+      };
     }
-    if (task.category === 'platform') {
-      return { label: 'DASHBOARD', action: () => { window.location.href = '/dashboard'; } };
+
+    if (title.includes('cancel') && title.includes('order')) {
+      return {
+        label: 'CANCEL ALL ORDERS',
+        endpoint: '/api/trading/orders/cancel-all',
+        method: 'DELETE',
+        isNav: false,
+      };
     }
-    if (task.category === 'urgent') {
-      return { label: 'GO TO PORTFOLIO', action: () => { window.location.href = '/portfolio'; } };
+    if (title.includes('close') && title.includes('position')) {
+      return {
+        label: 'CLOSE ALL POSITIONS',
+        endpoint: '/api/trading/positions/close-all',
+        method: 'DELETE',
+        isNav: false,
+      };
+    }
+    if (title.includes('clear') && title.includes('queue')) {
+      return {
+        label: 'CLEAR QUEUE',
+        endpoint: '/api/queue/clear',
+        method: 'DELETE',
+        isNav: false,
+      };
+    }
+    if (title.includes('launch') || title.includes('health')) {
+      return {
+        label: 'RUN HEALTH CHECK',
+        endpoint: '/api/system/health',
+        method: 'GET',
+        isNav: false,
+      };
+    }
+    if (title.includes('email')) {
+      return {
+        label: 'SEND TEST EMAIL',
+        endpoint: '/api/email/test',
+        method: 'POST',
+        isNav: false,
+      };
+    }
+    if (title.includes('queue') && title.includes('build')) {
+      return {
+        label: 'BUILD QUEUE',
+        endpoint: '/api/queue',
+        method: 'POST',
+        body: { action: 'build' },
+        isNav: false,
+      };
+    }
+    if (title.includes('queue')) {
+      return { label: 'OPEN QUEUE', endpoint: '/queue', method: 'GET', isNav: true };
+    }
+    if (title.includes('watchlist')) {
+      return { label: 'OPEN WATCHLIST', endpoint: '/recon', method: 'GET', isNav: true };
+    }
+    if (title.includes('strategy') || title.includes('decision')) {
+      return { label: 'OPEN STRATEGY', endpoint: '/strategy', method: 'GET', isNav: true };
+    }
+    if (title.includes('alert')) {
+      return { label: 'SET ALERTS', endpoint: '/alerts', method: 'GET', isNav: true };
+    }
+    if (title.includes('portfolio') || title.includes('position')) {
+      return { label: 'VIEW PORTFOLIO', endpoint: '/portfolio', method: 'GET', isNav: true };
+    }
+    if (title.includes('settings') || title.includes('enable')) {
+      return { label: 'OPEN SETTINGS', endpoint: '/settings', method: 'GET', isNav: true };
+    }
+    if (title.includes('intelligence') || title.includes('reddit')) {
+      return { label: 'VIEW INTEL', endpoint: '/intelligence', method: 'GET', isNav: true };
+    }
+    if (title.includes('congressional') || title.includes('smart money')) {
+      return { label: 'SMART MONEY', endpoint: '/smartmoney', method: 'GET', isNav: true };
     }
 
     return null;
   }
+
+  const executeTaskAction = async (task: Task) => {
+    const action = inferAction(task);
+    if (!action) return;
+
+    if (action.isNav) {
+      window.location.href = action.endpoint;
+      return;
+    }
+
+    setExecutingTask(task.id);
+    setTaskResults((prev) => ({ ...prev, [task.id]: { success: false, message: '' } }));
+
+    try {
+      const options: RequestInit = {
+        method: action.method,
+        headers: { 'Content-Type': 'application/json' },
+      };
+
+      if (action.body && ['POST', 'PATCH', 'PUT'].includes(action.method)) {
+        options.body = JSON.stringify(action.body);
+      }
+
+      const res = await fetch(action.endpoint, options);
+      const data = await res.json();
+
+      const success = data.success !== false && !data.error;
+      let message =
+        data.message ||
+        data.launch_message ||
+        (typeof data.queued === 'number' ? `✓ ${data.queued} trade(s) queued` : undefined) ||
+        (data.overall_action ? `✓ Autopilot: ${data.overall_action}` : undefined) ||
+        (success ? '✓ Done' : data.error || 'Something went wrong');
+
+      if (action.endpoint.includes('/api/system/health') && data.ready_for_launch === false) {
+        message = data.launch_message || message;
+      }
+
+      setTaskResults((prev) => ({ ...prev, [task.id]: { success, message } }));
+
+      if (success) {
+        setTimeout(() => {
+          void completeTask(task.id);
+        }, 2000);
+      }
+    } catch (e) {
+      setTaskResults((prev) => ({
+        ...prev,
+        [task.id]: {
+          success: false,
+          message: e instanceof Error ? e.message : 'Failed',
+        },
+      }));
+    } finally {
+      setExecutingTask(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -514,33 +613,60 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
               </div>
 
               {(() => {
-                const taskAction = getTaskAction(task);
-                if (!taskAction) return null;
+                const action = inferAction(task);
+                if (!action) return null;
+                const isExecuting = executingTask === task.id;
+                const result = taskResults[task.id];
+
                 return (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      taskAction.action();
-                    }}
+                  <div
                     style={{
-                      padding: '4px 10px',
-                      background: `${catColor}15`,
-                      border: `1px solid ${catColor}40`,
-                      borderRadius: 6,
-                      color: catColor,
-                      fontFamily: 'monospace',
-                      fontSize: 8,
-                      letterSpacing: 1,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
                       alignSelf: 'flex-start',
-                      marginTop: 2,
+                      flexShrink: 0,
                     }}
                   >
-                    {taskAction.label} →
-                  </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void executeTaskAction(task);
+                      }}
+                      disabled={isExecuting}
+                      style={{
+                        padding: '5px 12px',
+                        background: isExecuting ? '#1e2a3a' : action.isNav ? '#1e2a3a' : `${catColor}20`,
+                        border: `1px solid ${isExecuting ? '#1e2a3a' : catColor}40`,
+                        borderRadius: 6,
+                        color: isExecuting ? '#7a8fa8' : catColor,
+                        fontFamily: 'monospace',
+                        fontSize: 8,
+                        letterSpacing: 1,
+                        fontWeight: 700,
+                        cursor: isExecuting ? 'not-allowed' : 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {isExecuting
+                        ? '⟳ RUNNING...'
+                        : `${action.label} ${action.isNav ? '→' : '⚡'}`}
+                    </button>
+                    {result && (
+                      <div
+                        style={{
+                          fontFamily: 'monospace',
+                          fontSize: 8,
+                          letterSpacing: 1,
+                          color: result.success ? '#00ff88' : '#ff3d5a',
+                          maxWidth: 140,
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {result.message}
+                      </div>
+                    )}
+                  </div>
                 );
               })()}
 
