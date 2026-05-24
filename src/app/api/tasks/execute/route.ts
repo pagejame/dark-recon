@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 200,
+      max_tokens: 500,
       messages: [
         {
           role: 'user',
@@ -84,11 +84,34 @@ For navigation tasks use action_type "nav". For unclear tasks use action_type "m
       .join('');
     const start = raw.indexOf('{');
     const end = raw.lastIndexOf('}');
+
     if (start === -1) {
-      return NextResponse.json({ error: 'Claude returned invalid response' }, { status: 500 });
+      return NextResponse.json({ error: 'Could not analyze task' }, { status: 500 });
     }
 
-    const action = JSON.parse(raw.slice(start, end + 1));
+    let action: Record<string, unknown>;
+    try {
+      action = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
+    } catch {
+      const getField = (field: string) => {
+        const match = raw.match(new RegExp(`"${field}"\\s*:\\s*"([^"]*)"`));
+        return match ? match[1] : null;
+      };
+      const getBool = (field: string) =>
+        raw.includes(`"${field}": true`) || raw.includes(`"${field}":true`);
+
+      action = {
+        action_type: getField('action_type') || 'manual',
+        endpoint: getField('endpoint'),
+        method: getField('method') || 'GET',
+        body: null,
+        label: getField('label') || 'EXECUTE',
+        explanation: getField('explanation') || 'Execute this task',
+        requires_confirmation: getBool('requires_confirmation'),
+        confirmation_message: getField('confirmation_message'),
+      };
+    }
+
     return NextResponse.json({ action });
   } catch (error) {
     console.error('Task executor error:', error);
