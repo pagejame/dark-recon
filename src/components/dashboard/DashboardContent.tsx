@@ -9,6 +9,7 @@ import CatalystsWidget from '@/components/dashboard/CatalystsWidget';
 import AgentStatusGrid, { type AgentCardData } from '@/components/dashboard/AgentStatusGrid';
 import CronStatusWidget from '@/components/dashboard/CronStatusWidget';
 import TradeQueuePreview from '@/components/dashboard/TradeQueuePreview';
+import TasksWidget from '@/components/tasks/TasksWidget';
 import type { ScanResult } from '@/lib/agents/scanner';
 import type { MorningBriefing as MorningBriefingData } from '@/lib/agents/briefing';
 
@@ -568,6 +569,18 @@ export default function DashboardContent() {
             loading={portfolioLoading || positionsLoading}
             rebalanceActions={rebalanceActions}
           />
+          <div
+            style={{
+              background: '#111620',
+              border: '1px solid #1e2a3a',
+              borderLeft: '3px solid #ffd700',
+              borderRadius: 10,
+              padding: 16,
+              marginTop: 12,
+            }}
+          >
+            <TasksWidget compact={true} />
+          </div>
         </div>
         <div className="order-2 lg:order-1 lg:col-span-3">
           <MorningBriefing
