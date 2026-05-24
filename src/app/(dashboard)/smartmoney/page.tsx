@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
+import SectorHeatmap from '@/components/smartmoney/SectorHeatmap';
 
 interface CongressionalTrade {
   representative: string;
@@ -897,6 +898,21 @@ export default function SmartMoneyPage() {
           </SectionCard>
         </div>
       </div>
+
+      {recentTrades.length > 0 && (
+        <div
+          style={{
+            background: '#111620',
+            border: '1px solid #1e2a3a',
+            borderRadius: 10,
+            padding: 20,
+            marginTop: 12,
+            marginBottom: 24,
+          }}
+        >
+          <SectorHeatmap trades={recentTrades} />
+        </div>
+      )}
 
       {/* AI Analysis */}
       <SectionCard label="SMART MONEY ANALYSIS" borderColor="#00ff88">

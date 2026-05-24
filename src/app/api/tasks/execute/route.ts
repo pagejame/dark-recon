@@ -133,7 +133,7 @@ const DIRECT_ACTIONS: { keywords: string[]; action: TaskAction }[] = [
     },
   },
   {
-    keywords: ['stop loss audit', 'audit stop', 'check stops', 'stop loss check', 'unprotected position'],
+    keywords: ['stop loss audit', 'audit stop', 'check stops', 'stop loss check', 'unprotected position', 'stop loss', 'set stop', 'defensive stop', 'stop at $', 'stop-loss on'],
     action: {
       action_type: 'api',
       endpoint: '/api/portfolio/audit',
@@ -146,7 +146,7 @@ const DIRECT_ACTIONS: { keywords: string[]; action: TaskAction }[] = [
     },
   },
   {
-    keywords: ['dismiss alert', 'triggered alert', 'clear alert', 'price alert', 'nvda alert', 'xle alert'],
+    keywords: ['dismiss alert', 'triggered alert', 'clear alert', 'price alert', 'nvda alert', 'xle alert', 'dismiss', 'alert', 'clear triggered'],
     action: {
       action_type: 'api',
       endpoint: '/api/alerts/check',
@@ -154,6 +154,45 @@ const DIRECT_ACTIONS: { keywords: string[]; action: TaskAction }[] = [
       body: null,
       label: 'CHECK ALERTS',
       explanation: 'Checks and updates all price alert statuses',
+      requires_confirmation: false,
+      confirmation_message: null,
+    },
+  },
+  {
+    keywords: ['duplicate', 'queue entry', 'approve one', 'reject one', 'pair'],
+    action: {
+      action_type: 'nav',
+      endpoint: '/queue',
+      method: 'GET',
+      body: null,
+      label: 'OPEN QUEUE',
+      explanation: 'Navigate to Trade Queue to approve/reject duplicate entries',
+      requires_confirmation: false,
+      confirmation_message: null,
+    },
+  },
+  {
+    keywords: ['prepare', 'buy order', 'limit buy', 'targeting', 'allocation'],
+    action: {
+      action_type: 'api',
+      endpoint: '/api/queue',
+      method: 'POST',
+      body: { action: 'build' },
+      label: 'BUILD TRADE QUEUE',
+      explanation: 'Builds pre-sized trade queue based on current signals',
+      requires_confirmation: false,
+      confirmation_message: null,
+    },
+  },
+  {
+    keywords: ['reprice', 'reassess', 'evaluate', 'review order'],
+    action: {
+      action_type: 'nav',
+      endpoint: '/portfolio',
+      method: 'GET',
+      body: null,
+      label: 'VIEW PORTFOLIO',
+      explanation: 'Navigate to Portfolio to review and reprice orders',
       requires_confirmation: false,
       confirmation_message: null,
     },
@@ -229,7 +268,8 @@ const NAV_ACTIONS: { keywords: string[]; url: string; label: string }[] = [
   { keywords: ['add tickers', 'recon feed', 'add to watchlist', 'populate watchlist'], url: '/recon', label: 'OPEN WATCHLIST' },
   { keywords: ['log decision', 'strategy decision', 'decision log', 'log first strategy'], url: '/strategy', label: 'OPEN STRATEGY' },
   { keywords: ['set price alert', 'set alert target', 'breakout alert', 'set up price alerts'], url: '/alerts', label: 'SET ALERTS' },
-  { keywords: ['review queue', 'approve trade', 'open queue', 'check queue manually'], url: '/queue', label: 'OPEN QUEUE' },
+  { keywords: ['review queue', 'approve trade', 'open queue', 'check queue manually', 'duplicate', 'approve one', 'reject one per'], url: '/queue', label: 'OPEN QUEUE' },
+  { keywords: ['prepare', 'buy order at', 'limit buy targeting'], url: '/queue', label: 'OPEN TRADE QUEUE' },
   { keywords: ['build thesis', 'thesis builder', 'analyze ticker'], url: '/thesis', label: 'THESIS BUILDER' },
   { keywords: ['view portfolio', 'check portfolio'], url: '/portfolio', label: 'VIEW PORTFOLIO' },
 ];

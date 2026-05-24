@@ -105,39 +105,56 @@ export async function getMarketCalendar(): Promise<PreMarketData['market_calenda
 
 export async function getFuturesSnapshot(): Promise<PreMarketData['futures']> {
   try {
-    const [spyRes, qqqRes] = await Promise.all([
-      fetch(`${FINNHUB_BASE}/quote?symbol=SPY`, { headers: { 'X-Finnhub-Token': FINNHUB_KEY } }),
-      fetch(`${FINNHUB_BASE}/quote?symbol=QQQ`, { headers: { 'X-Finnhub-Token': FINNHUB_KEY } }),
-    ]);
+    const symbols = ['ES1!', 'NQ1!', 'YM1!', 'SPY', 'QQQ'];
+    const results: Record<string, { c?: number; dp?: number; pc?: number }> = {};
 
-    const spy = spyRes.ok ? await spyRes.json() : null;
-    const qqq = qqqRes.ok ? await qqqRes.json() : null;
+    await Promise.all(
+      symbols.map(async (sym) => {
+        try {
+          const res = await fetch(`${FINNHUB_BASE}/quote?symbol=${encodeURIComponent(sym)}`, {
+            headers: { 'X-Finnhub-Token': FINNHUB_KEY },
+            signal: AbortSignal.timeout(4000),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.c) results[sym] = data;
+          }
+        } catch {
+          /* skip */
+        }
+      })
+    );
 
-    const spyChange = spy ? ((spy.c - spy.pc) / spy.pc) * 100 : null;
-    const qqqChange = qqq ? ((qqq.c - qqq.pc) / qqq.pc) * 100 : null;
+    const esData = results['ES1!'] || results['SPY'];
+    const nqData = results['NQ1!'] || results['QQQ'];
+    const ymData = results['YM1!'];
 
-    const avgChange =
-      spyChange !== null && qqqChange !== null
-        ? (spyChange + qqqChange) / 2
-        : (spyChange ?? qqqChange ?? 0);
+    const esPrice = esData?.c || null;
+    const nqPrice = nqData?.c || null;
+    const esChange = esData?.dp ?? (esData?.pc ? ((esData.c! - esData.pc) / esData.pc) * 100 : 0);
+    const nqChange = nqData?.dp ?? (nqData?.pc ? ((nqData.c! - nqData.pc) / nqData.pc) * 100 : 0);
 
+    const avgChange = (esChange + nqChange) / 2;
     const bias = avgChange > 0.3 ? 'bullish' : avgChange < -0.3 ? 'bearish' : 'neutral';
+
+    const isFutures = !!results['ES1!'];
+    const label = isFutures ? 'Futures' : 'ETF Proxy';
 
     const summary =
       bias === 'bullish'
-        ? `SPY +${spyChange?.toFixed(2)}% QQQ +${qqqChange?.toFixed(2)}% — risk-on overnight`
+        ? `${label}: ES ${esChange >= 0 ? '+' : ''}${esChange.toFixed(2)}% NQ ${nqChange >= 0 ? '+' : ''}${nqChange.toFixed(2)}% — Risk ON overnight`
         : bias === 'bearish'
-          ? `SPY ${spyChange?.toFixed(2)}% QQQ ${qqqChange?.toFixed(2)}% — risk-off pressure`
-          : `SPY ${spyChange?.toFixed(2)}% QQQ ${qqqChange?.toFixed(2)}% — flat overnight`;
+          ? `${label}: ES ${esChange.toFixed(2)}% NQ ${nqChange.toFixed(2)}% — Risk OFF pressure`
+          : `${label}: ES ${esChange >= 0 ? '+' : ''}${esChange.toFixed(2)}% NQ ${nqChange >= 0 ? '+' : ''}${nqChange.toFixed(2)}% — Flat overnight`;
 
     return {
-      es: spy?.c || null,
-      nq: qqq?.c || null,
-      ym: null,
+      es: esPrice,
+      nq: nqPrice,
+      ym: ymData?.c || null,
       bias,
       summary,
-      spy_change_pct: spyChange,
-      qqq_change_pct: qqqChange,
+      spy_change_pct: results['SPY']?.dp ?? esChange,
+      qqq_change_pct: results['QQQ']?.dp ?? nqChange,
     };
   } catch {
     return {
@@ -145,7 +162,7 @@ export async function getFuturesSnapshot(): Promise<PreMarketData['futures']> {
       nq: null,
       ym: null,
       bias: 'neutral',
-      summary: 'Futures data unavailable',
+      summary: 'Market data unavailable',
       spy_change_pct: null,
       qqq_change_pct: null,
     };
