@@ -87,6 +87,12 @@ interface AutonomousAgentRun {
     executed?: number;
     queued?: number;
     notified?: number;
+    decisions?: {
+      action: string;
+      issue: string;
+      rationale: string;
+      ticker?: string;
+    }[];
   };
 }
 
@@ -894,53 +900,110 @@ export default function DashboardContent() {
                 borderRadius: 8,
                 padding: '12px 16px',
                 marginBottom: 12,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
               }}
             >
-              <div>
-                <div
-                  style={{
-                    fontFamily: 'monospace',
-                    fontSize: 9,
-                    letterSpacing: 2,
-                    color: '#7a8fa8',
-                    marginBottom: 4,
-                  }}
-                >
-                  AUTONOMOUS AGENT
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  marginBottom: 8,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 9,
+                      letterSpacing: 2,
+                      color: '#7a8fa8',
+                      marginBottom: 4,
+                    }}
+                  >
+                    AUTONOMOUS AGENT
+                  </div>
+                  <div style={{ fontSize: 13, color: '#e8edf5' }}>
+                    {agentStatus.results?.executed || 0} executed ·{' '}
+                    {agentStatus.results?.queued || 0} queued ·{' '}
+                    {agentStatus.results?.notified || 0} flagged
+                  </div>
                 </div>
-                <div style={{ fontSize: 13, color: '#e8edf5' }}>
-                  {agentStatus.results?.executed || 0} executed ·{' '}
-                  {agentStatus.results?.queued || 0} queued ·{' '}
-                  {agentStatus.results?.notified || 0} flagged
+                <div style={{ textAlign: 'right' }}>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 9,
+                      color: agentStatus.status === 'success' ? '#00ff88' : '#ffd700',
+                      letterSpacing: 1,
+                    }}
+                  >
+                    {agentStatus.status?.toUpperCase()}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      color: '#3d5068',
+                      marginTop: 2,
+                    }}
+                  >
+                    {agentStatus.ran_at
+                      ? `${Math.floor((Date.now() - new Date(agentStatus.ran_at).getTime()) / 60000)}m ago`
+                      : 'Not yet run'}
+                  </div>
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div
-                  style={{
-                    fontFamily: 'monospace',
-                    fontSize: 9,
-                    color: agentStatus.status === 'success' ? '#00ff88' : '#ffd700',
-                    letterSpacing: 1,
-                  }}
-                >
-                  {agentStatus.status?.toUpperCase()}
-                </div>
-                <div
-                  style={{
-                    fontFamily: 'monospace',
-                    fontSize: 8,
-                    color: '#3d5068',
-                    marginTop: 2,
-                  }}
-                >
-                  {agentStatus.ran_at
-                    ? `${Math.floor((Date.now() - new Date(agentStatus.ran_at).getTime()) / 60000)}m ago`
-                    : 'Not yet run'}
-                </div>
-              </div>
+
+              {(agentStatus.results?.decisions || [])
+                .filter((d) => d.action !== 'SKIP')
+                .slice(0, 2)
+                .map((d, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      fontSize: 11,
+                      color: '#7a8fa8',
+                      padding: '6px 0',
+                      borderTop: '1px solid #1e2a3a40',
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    <span
+                      style={{
+                        color:
+                          d.action === 'AUTO_EXECUTE'
+                            ? '#00ff88'
+                            : d.action === 'QUEUE_FOR_APPROVAL'
+                              ? '#3d9aff'
+                              : '#ffd700',
+                        marginRight: 6,
+                      }}
+                    >
+                      {d.action === 'AUTO_EXECUTE'
+                        ? '⚡'
+                        : d.action === 'QUEUE_FOR_APPROVAL'
+                          ? '📋'
+                          : '🔔'}
+                    </span>
+                    <span style={{ color: '#e8edf5' }}>{d.issue}</span>
+                  </div>
+                ))}
+
+              <a
+                href="/agent"
+                style={{
+                  display: 'inline-block',
+                  marginTop: 8,
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  color: '#3d9aff',
+                  letterSpacing: 1,
+                  textDecoration: 'none',
+                }}
+              >
+                VIEW AGENT LOG →
+              </a>
             </div>
           )}
           <AgentStatusGrid agents={agents} loading={agentsLoading} />

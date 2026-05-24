@@ -31,6 +31,7 @@ import { useState } from 'react';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/autopilot', label: 'Autopilot', icon: Bot },
+  { href: '/agent', label: 'Agent', icon: Bot },
   { href: '/queue', label: 'Trade Queue', icon: ListChecks },
   { href: '/tasks', label: 'Tasks', icon: CheckSquare },
   { href: '/strategy', label: 'Strategy', icon: LineChart },

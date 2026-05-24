@@ -35,6 +35,21 @@ interface ToggleSetting {
   enabled: boolean;
 }
 
+interface AgentDecisionResult {
+  action: string;
+  issue: string;
+  rationale: string;
+  ticker?: string;
+}
+
+interface AgentRunResult {
+  executed: number;
+  queued: number;
+  notified: number;
+  decisions: AgentDecisionResult[];
+  error?: string;
+}
+
 const DEFAULT_AUTO_CLOSE: ToggleSetting = { enabled: true };
 const DEFAULT_WATCHLIST_AUTOPOP: ToggleSetting = { enabled: true };
 const DEFAULT_AUTONOMOUS_AGENT: ToggleSetting = { enabled: true };
@@ -231,6 +246,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [testEmailLoading, setTestEmailLoading] = useState(false);
   const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
+  const [agentResult, setAgentResult] = useState<AgentRunResult | null>(null);
+  const [agentRunning, setAgentRunning] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -352,6 +369,26 @@ export default function SettingsPage() {
       setSaveError(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(null);
+    }
+  };
+
+  const runAgent = async () => {
+    setAgentRunning(true);
+    setAgentResult(null);
+    try {
+      const res = await fetch('/api/agent/runs', { method: 'POST' });
+      const data = await res.json();
+      setAgentResult(data);
+    } catch {
+      setAgentResult({
+        error: 'Failed to run agent',
+        executed: 0,
+        queued: 0,
+        notified: 0,
+        decisions: [],
+      });
+    } finally {
+      setAgentRunning(false);
     }
   };
 
@@ -775,29 +812,24 @@ export default function SettingsPage() {
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button
                 type="button"
-                onClick={async () => {
-                  const res = await fetch('/api/cron/autonomous-agent', { method: 'POST' });
-                  const data = await res.json();
-                  alert(
-                    `Agent ran: ${data.executed ?? 0} executed, ${data.queued ?? 0} queued, ${data.notified ?? 0} notified`
-                  );
-                }}
+                onClick={() => void runAgent()}
+                disabled={agentRunning}
                 style={{
                   padding: '8px 16px',
-                  background: '#00ff8815',
+                  background: agentRunning ? '#1e2a3a' : '#00ff8815',
                   border: '1px solid #00ff8840',
                   borderRadius: 8,
-                  color: '#00ff88',
+                  color: agentRunning ? '#7a8fa8' : '#00ff88',
                   fontFamily: 'monospace',
                   fontSize: 9,
                   letterSpacing: 1,
-                  cursor: 'pointer',
+                  cursor: agentRunning ? 'not-allowed' : 'pointer',
                 }}
               >
-                RUN AGENT NOW
+                {agentRunning ? 'RUNNING...' : 'RUN AGENT NOW'}
               </button>
               {savedSection === 'autonomous_agent' && (
                 <span
@@ -812,6 +844,103 @@ export default function SettingsPage() {
                 </span>
               )}
             </div>
+
+            {agentResult && !agentResult.error && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 14,
+                  background: '#00ff8808',
+                  border: '1px solid #00ff8830',
+                  borderRadius: 8,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    letterSpacing: 2,
+                    color: '#00ff88',
+                    marginBottom: 8,
+                  }}
+                >
+                  AGENT RUN COMPLETE
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: '#7a8fa8',
+                    marginBottom: 8,
+                  }}
+                >
+                  ⚡ {agentResult.executed} executed · 📋 {agentResult.queued} queued · 🔔{' '}
+                  {agentResult.notified} flagged
+                </div>
+                {(agentResult.decisions || [])
+                  .filter((d) => d.action !== 'SKIP')
+                  .map((d, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        fontSize: 12,
+                        color: '#7a8fa8',
+                        padding: '4px 0',
+                        borderTop: '1px solid #1e2a3a',
+                        marginTop: 4,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color:
+                            d.action === 'AUTO_EXECUTE'
+                              ? '#00ff88'
+                              : d.action === 'QUEUE_FOR_APPROVAL'
+                                ? '#3d9aff'
+                                : '#ffd700',
+                          marginRight: 8,
+                        }}
+                      >
+                        {d.action === 'AUTO_EXECUTE'
+                          ? '⚡'
+                          : d.action === 'QUEUE_FOR_APPROVAL'
+                            ? '📋'
+                            : '🔔'}
+                      </span>
+                      <span style={{ color: '#e8edf5' }}>{d.issue}</span>
+                      <div
+                        style={{
+                          paddingLeft: 20,
+                          color: '#7a8fa8',
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}
+                      >
+                        {d.rationale}
+                      </div>
+                    </div>
+                  ))}
+                <a
+                  href="/agent"
+                  style={{
+                    display: 'block',
+                    marginTop: 10,
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    color: '#3d9aff',
+                    letterSpacing: 1,
+                    textDecoration: 'none',
+                  }}
+                >
+                  VIEW FULL AGENT LOG →
+                </a>
+              </div>
+            )}
+            {agentResult?.error && (
+              <div style={{ marginTop: 12, fontFamily: 'monospace', fontSize: 11, color: '#ff8fa0' }}>
+                {agentResult.error}
+              </div>
+            )}
           </div>
 
           {/* Account */}
