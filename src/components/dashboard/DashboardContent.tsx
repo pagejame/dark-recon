@@ -80,6 +80,16 @@ interface PreMarketMover {
   direction: 'up' | 'down';
 }
 
+interface AutonomousAgentRun {
+  status: 'success' | 'partial' | 'failed';
+  ran_at: string;
+  results?: {
+    executed?: number;
+    queued?: number;
+    notified?: number;
+  };
+}
+
 function isMarketOpenET(): boolean {
   const now = new Date();
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -105,6 +115,7 @@ export default function DashboardContent() {
   const [rebalanceActions, setRebalanceActions] = useState<RebalanceAction[]>([]);
   const [preMarketMovers, setPreMarketMovers] = useState<PreMarketMover[]>([]);
   const [marketOpen, setMarketOpen] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<AutonomousAgentRun | null>(null);
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -324,6 +335,16 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const fetchAgentStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cron/status');
+      const data = await res.json();
+      setAgentStatus(data.autonomous_agent || null);
+    } catch {
+      setAgentStatus(null);
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void Promise.allSettled([
       fetchBriefing(),
@@ -337,6 +358,7 @@ export default function DashboardContent() {
       fetchPositionAlerts(),
       fetchRebalance(),
       fetchPreMarket(),
+      fetchAgentStatus(),
     ]);
   }, [
     fetchBriefing,
@@ -350,6 +372,7 @@ export default function DashboardContent() {
     fetchPositionAlerts,
     fetchRebalance,
     fetchPreMarket,
+    fetchAgentStatus,
   ]);
 
   useEffect(() => {
@@ -862,6 +885,64 @@ export default function DashboardContent() {
           <CatalystsWidget earnings={earnings} loading={earningsLoading} />
         </div>
         <div className="lg:col-span-2">
+          {agentStatus && (
+            <div
+              style={{
+                background: '#111620',
+                border: '1px solid #1e2a3a',
+                borderLeft: `3px solid ${agentStatus.status === 'success' ? '#00ff88' : '#ffd700'}`,
+                borderRadius: 8,
+                padding: '12px 16px',
+                marginBottom: 12,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    letterSpacing: 2,
+                    color: '#7a8fa8',
+                    marginBottom: 4,
+                  }}
+                >
+                  AUTONOMOUS AGENT
+                </div>
+                <div style={{ fontSize: 13, color: '#e8edf5' }}>
+                  {agentStatus.results?.executed || 0} executed ·{' '}
+                  {agentStatus.results?.queued || 0} queued ·{' '}
+                  {agentStatus.results?.notified || 0} flagged
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    color: agentStatus.status === 'success' ? '#00ff88' : '#ffd700',
+                    letterSpacing: 1,
+                  }}
+                >
+                  {agentStatus.status?.toUpperCase()}
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 8,
+                    color: '#3d5068',
+                    marginTop: 2,
+                  }}
+                >
+                  {agentStatus.ran_at
+                    ? `${Math.floor((Date.now() - new Date(agentStatus.ran_at).getTime()) / 60000)}m ago`
+                    : 'Not yet run'}
+                </div>
+              </div>
+            </div>
+          )}
           <AgentStatusGrid agents={agents} loading={agentsLoading} />
         </div>
       </div>

@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
   email: { weekly_enabled: true, email_address: '' },
   auto_close_enabled: { enabled: false },
   watchlist_autopop_enabled: { enabled: true },
+  autonomous_agent_enabled: { enabled: true },
 };
 
 export async function GET() {

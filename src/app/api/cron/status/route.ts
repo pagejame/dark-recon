@@ -9,8 +9,17 @@ export async function GET() {
       .select('*')
       .order('ran_at', { ascending: false })
       .limit(5);
-    return NextResponse.json({ runs: data || [] });
+
+    const { data: agentRun } = await supabase
+      .from('cron_runs')
+      .select('*')
+      .eq('job_name', 'autonomous-agent')
+      .order('ran_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return NextResponse.json({ runs: data || [], autonomous_agent: agentRun || null });
   } catch {
-    return NextResponse.json({ runs: [] });
+    return NextResponse.json({ runs: [], autonomous_agent: null });
   }
 }

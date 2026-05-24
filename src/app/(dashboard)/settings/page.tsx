@@ -37,6 +37,7 @@ interface ToggleSetting {
 
 const DEFAULT_AUTO_CLOSE: ToggleSetting = { enabled: true };
 const DEFAULT_WATCHLIST_AUTOPOP: ToggleSetting = { enabled: true };
+const DEFAULT_AUTONOMOUS_AGENT: ToggleSetting = { enabled: true };
 
 const DEFAULT_RISK: RiskSettings = {
   max_position_pct: 5,
@@ -223,6 +224,7 @@ export default function SettingsPage() {
   const [email, setEmail] = useState<EmailSettings>(DEFAULT_EMAIL);
   const [autoClose, setAutoClose] = useState<ToggleSetting>(DEFAULT_AUTO_CLOSE);
   const [watchlistAutopop, setWatchlistAutopop] = useState<ToggleSetting>(DEFAULT_WATCHLIST_AUTOPOP);
+  const [autonomousAgent, setAutonomousAgent] = useState<ToggleSetting>(DEFAULT_AUTONOMOUS_AGENT);
 
   const [savedSection, setSavedSection] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -243,6 +245,9 @@ export default function SettingsPage() {
       if (data.auto_close_enabled) setAutoClose({ ...DEFAULT_AUTO_CLOSE, ...data.auto_close_enabled });
       if (data.watchlist_autopop_enabled) {
         setWatchlistAutopop({ ...DEFAULT_WATCHLIST_AUTOPOP, ...data.watchlist_autopop_enabled });
+      }
+      if (data.autonomous_agent_enabled) {
+        setAutonomousAgent({ ...DEFAULT_AUTONOMOUS_AGENT, ...data.autonomous_agent_enabled });
       }
     } catch {
       // defaults remain
@@ -326,6 +331,27 @@ export default function SettingsPage() {
       setTestEmailResult(e instanceof Error ? e.message : 'Test email failed');
     } finally {
       setTestEmailLoading(false);
+    }
+  };
+
+  const saveAutonomousAgent = async (value: ToggleSetting) => {
+    setAutonomousAgent(value);
+    setSaving('autonomous_agent');
+    setSaveError(null);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'autonomous_agent_enabled', value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Save failed');
+      setSavedSection('autonomous_agent');
+      setTimeout(() => setSavedSection(null), 2000);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(null);
     }
   };
 
@@ -700,6 +726,93 @@ export default function SettingsPage() {
             </div>
             <SaveButton sectionKey="email" />
           </SectionCard>
+
+          {/* Autonomous Agent */}
+          <div
+            style={{
+              background: '#111620',
+              border: '1px solid #1e2a3a',
+              borderLeft: '3px solid #00ff88',
+              borderRadius: 10,
+              padding: 20,
+              marginBottom: 12,
+            }}
+            className="md:col-span-2"
+          >
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 9,
+                letterSpacing: 3,
+                color: '#00ff88',
+                marginBottom: 16,
+              }}
+            >
+              AUTONOMOUS AGENT
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ flex: 1, marginRight: 20 }}>
+                <div style={{ fontSize: 14, color: '#e8edf5', marginBottom: 6 }}>
+                  Enable Autonomous Agent
+                </div>
+                <div style={{ fontSize: 12, color: '#7a8fa8', lineHeight: 1.6 }}>
+                  Runs every 10 minutes during market hours. Scans the platform, reviews findings
+                  with Claude, and executes safe actions automatically. Trade entries always require
+                  your approval. Destructive actions (close positions) require confirmation.
+                </div>
+              </div>
+              <Toggle
+                value={autonomousAgent.enabled}
+                onChange={(v) => void saveAutonomousAgent({ enabled: v })}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await fetch('/api/cron/autonomous-agent', { method: 'POST' });
+                  const data = await res.json();
+                  alert(
+                    `Agent ran: ${data.executed ?? 0} executed, ${data.queued ?? 0} queued, ${data.notified ?? 0} notified`
+                  );
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: '#00ff8815',
+                  border: '1px solid #00ff8840',
+                  borderRadius: 8,
+                  color: '#00ff88',
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  letterSpacing: 1,
+                  cursor: 'pointer',
+                }}
+              >
+                RUN AGENT NOW
+              </button>
+              {savedSection === 'autonomous_agent' && (
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: '#00ff88',
+                    letterSpacing: 1,
+                  }}
+                >
+                  Saved
+                </span>
+              )}
+            </div>
+          </div>
 
           {/* Account */}
           <SectionCard label="ACCOUNT" borderColor="#7a8fa8" className="md:col-span-2">
