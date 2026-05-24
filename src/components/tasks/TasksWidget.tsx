@@ -11,6 +11,32 @@ interface Task {
   priority: number;
   due_date?: string;
   created_at: string;
+  issue_fingerprint?: string;
+  last_executed_at?: string;
+  execution_result?: string;
+  execution_message?: string;
+}
+
+interface ExecutionLogEntry {
+  id: string;
+  task_title: string;
+  action_label: string;
+  result: string;
+  result_message?: string;
+  issue_fingerprint?: string;
+  executed_at: string;
+}
+
+function generateFingerprint(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\$[\d,\.]+/g, '$X')
+    .replace(/\d{4}-\d{2}-\d{2}/g, 'DATE')
+    .replace(/\d+/g, 'N')
+    .replace(/[^a-z\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -45,13 +71,20 @@ export default function TasksWidget({
   const [taskResults, setTaskResults] = useState<
     Record<string, { success: boolean; message: string }>
   >({});
+  const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
+  const [showLog, setShowLog] = useState(false);
 
   const fetchTasksAndNotify = async () => {
     try {
-      const res = await fetch('/api/tasks');
-      const data = await res.json();
+      const [tasksRes, logRes] = await Promise.all([
+        fetch('/api/tasks'),
+        fetch('/api/tasks/log'),
+      ]);
+      const data = await tasksRes.json();
+      const logData = await logRes.json();
       const loadedTasks = data.tasks || [];
       setTasks(loadedTasks);
+      setExecutionLog((logData.log || []).slice(0, 20));
       if (onTasksLoaded) onTasksLoaded(loadedTasks);
     } catch {
       // silent
@@ -64,12 +97,20 @@ export default function TasksWidget({
     void fetchTasksAndNotify();
   }, []);
 
-  const completeTask = async (id: string) => {
+  const completeTask = async (
+    id: string,
+    meta?: {
+      action_endpoint?: string;
+      action_label?: string;
+      execution_result?: string;
+      execution_message?: string;
+    }
+  ) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
     await fetch(`/api/tasks/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'done' }),
+      body: JSON.stringify({ status: 'done', ...meta }),
     });
   };
 
@@ -211,8 +252,37 @@ export default function TasksWidget({
       setTaskResults((prev) => ({ ...prev, [task.id]: { success, message: resultMsg } }));
 
       if (success) {
+        void fetch('/api/tasks/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            task_title: task.title,
+            task_category: task.category,
+            action_taken: action.endpoint || 'manual',
+            action_label: action.label || 'EXECUTED',
+            result: 'success',
+            result_message: resultMsg,
+          }),
+        }).catch(console.error);
+
+        void fetch(`/api/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            execution_result: 'success',
+            execution_message: resultMsg,
+            action_endpoint: action.endpoint,
+            action_label: action.label,
+          }),
+        }).catch(console.error);
+
         setTimeout(() => {
-          void completeTask(task.id);
+          void completeTask(task.id, {
+            action_endpoint: action.endpoint,
+            action_label: action.label,
+            execution_result: 'success',
+            execution_message: resultMsg,
+          });
         }, 2000);
       }
     } catch (e) {
@@ -479,6 +549,13 @@ export default function TasksWidget({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {(compact ? displayTasks : [...urgentTasks, ...otherTasks]).map((task) => {
           const catColor = CATEGORY_COLORS[task.category] || '#7a8fa8';
+          const taskFingerprint = task.issue_fingerprint || generateFingerprint(task.title);
+          const handledEntry = executionLog.find(
+            (log) =>
+              log.result === 'success' &&
+              (log.issue_fingerprint === taskFingerprint ||
+                log.task_title.toLowerCase() === task.title.toLowerCase())
+          );
 
           return (
             <div
@@ -556,6 +633,24 @@ export default function TasksWidget({
                       }}
                     >
                       URGENT
+                    </span>
+                  )}
+                  {handledEntry && (
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 7,
+                        letterSpacing: 1,
+                        color: '#3d9aff',
+                        background: '#3d9aff15',
+                        border: '1px solid #3d9aff30',
+                        padding: '1px 6px',
+                        borderRadius: 10,
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={handledEntry.result_message || handledEntry.action_label}
+                    >
+                      ALREADY HANDLED · {new Date(handledEntry.executed_at).toLocaleDateString()}
                     </span>
                   )}
                 </div>
@@ -654,6 +749,83 @@ export default function TasksWidget({
           >
             +{tasks.length - 5} more tasks →
           </a>
+        </div>
+      )}
+
+      {!compact && executionLog.length > 0 && (
+        <div style={{ marginTop: 20, borderTop: '1px solid #1e2a3a', paddingTop: 16 }}>
+          <button
+            onClick={() => setShowLog(!showLog)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: 9,
+              letterSpacing: 2,
+              color: '#3d5068',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            {showLog ? '▼' : '▶'} EXECUTION HISTORY ({executionLog.length})
+          </button>
+
+          {showLog && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {executionLog.map((log) => (
+                <div
+                  key={log.id}
+                  style={{
+                    display: 'flex',
+                    gap: 10,
+                    alignItems: 'flex-start',
+                    padding: '6px 10px',
+                    background: '#0d1117',
+                    border: '1px solid #1e2a3a',
+                    borderLeft: `2px solid ${log.result === 'success' ? '#00ff8840' : '#ff3d5a40'}`,
+                    borderRadius: 6,
+                    opacity: 0.7,
+                  }}
+                >
+                  <span
+                    style={{
+                      color: log.result === 'success' ? '#00ff88' : '#ff3d5a',
+                      fontSize: 10,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {log.result === 'success' ? '✓' : '✗'}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: '#7a8fa8',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {log.task_title}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 8,
+                        color: '#3d5068',
+                        marginTop: 2,
+                      }}
+                    >
+                      {log.action_label} · {new Date(log.executed_at).toLocaleDateString()}{' '}
+                      {new Date(log.executed_at).toLocaleTimeString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

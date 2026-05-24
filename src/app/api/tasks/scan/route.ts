@@ -30,6 +30,27 @@ interface ScanTask {
   priority?: number;
 }
 
+function generateFingerprint(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\$[\d,\.]+/g, '$X')
+    .replace(/\d{4}-\d{2}-\d{2}/g, 'DATE')
+    .replace(/\d+/g, 'N')
+    .replace(/[^a-z\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+}
+
+interface HandledEntry {
+  title: string;
+  action: string;
+  result: string;
+  message: string;
+  when: string;
+  fingerprint: string;
+}
+
 async function gatherPlatformStatus(): Promise<string> {
   const supabase = createAdminClient();
   const sections: string[] = [];
@@ -234,6 +255,28 @@ export const maxDuration = 60;
 export async function POST(_request: NextRequest) {
   try {
     const supabase = createAdminClient();
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: executionLog } = await supabase
+      .from('task_execution_log')
+      .select('task_title, action_label, result, result_message, issue_fingerprint, executed_at')
+      .gte('executed_at', thirtyDaysAgo)
+      .order('executed_at', { ascending: false })
+      .limit(50);
+
+    const recentlyHandled: HandledEntry[] = (executionLog || []).map((log) => ({
+      title: log.task_title,
+      action: log.action_label,
+      result: log.result,
+      message: log.result_message || '',
+      when: new Date(log.executed_at).toLocaleDateString(),
+      fingerprint: log.issue_fingerprint || generateFingerprint(log.task_title),
+    }));
+
+    const handledFingerprints = new Set(
+      recentlyHandled.filter((h) => h.result === 'success').map((h) => h.fingerprint)
+    );
+
     const platformStatus = await gatherPlatformStatus();
 
     const { data: existingTasks } = await supabase
@@ -242,6 +285,12 @@ export async function POST(_request: NextRequest) {
       .neq('status', 'done');
 
     const existingTitles = (existingTasks || []).map((t) => t.title.toLowerCase());
+
+    const handledContext =
+      recentlyHandled.length > 0
+        ? `RECENTLY HANDLED (do NOT re-create these unless the situation has materially changed):
+${recentlyHandled.map((h) => `  [${h.result.toUpperCase()}] ${h.title} — ${h.action} on ${h.when}: ${h.message}`).join('\n')}`
+        : 'No recently handled tasks.';
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
@@ -257,7 +306,17 @@ ${platformStatus}
 EXISTING TASKS (don't duplicate these):
 ${existingTitles.join('\n') || 'none'}
 
-Generate ONLY tasks that are genuinely needed right now based on the data above. Be specific and actionable. 
+${handledContext}
+
+Generate ONLY tasks that are genuinely needed right now based on the data above. Be specific and actionable.
+
+IMPORTANT: Do NOT create tasks for issues that appear in RECENTLY HANDLED unless:
+1. The same issue has recurred (e.g. new triggered alerts after previous ones were dismissed)
+2. A previous action failed and needs to be retried
+3. Conditions have materially changed since it was last handled
+
+If you skip a potential task because it was recently handled, that is correct behavior.
+Return [] if all detected issues were recently handled.
 
 Return ONLY valid JSON array, no markdown:
 [
@@ -292,26 +351,40 @@ Maximum 8 tasks per scan.`,
     const end = raw.lastIndexOf(']');
 
     if (start === -1 || end === -1) {
+      const skippedCount = recentlyHandled.filter((h) => h.result === 'success').length;
       return NextResponse.json({
         created: 0,
         tasks: [],
-        message: 'No tasks needed — platform looks healthy',
+        skipped_handled: skippedCount,
+        message:
+          skippedCount > 0
+            ? `✓ Scan complete — all detected issues were recently handled (${skippedCount} skipped)`
+            : 'No tasks needed — platform looks healthy',
       });
     }
 
     const newTasks = JSON.parse(raw.slice(start, end + 1)) as ScanTask[];
 
     if (!Array.isArray(newTasks) || newTasks.length === 0) {
+      const skippedCount = recentlyHandled.filter((h) => h.result === 'success').length;
       return NextResponse.json({
         created: 0,
         tasks: [],
-        message: '✓ Platform scan complete — no new tasks needed',
+        skipped_handled: skippedCount,
+        message:
+          skippedCount > 0
+            ? `✓ Scan complete — all detected issues were recently handled (${skippedCount} skipped)`
+            : '✓ Platform scan complete — no new tasks needed',
       });
     }
 
     const created = [];
     for (const task of newTasks.slice(0, 8)) {
       if (!task.title) continue;
+
+      const fingerprint = generateFingerprint(task.title);
+
+      if (handledFingerprints.has(fingerprint)) continue;
 
       const isDuplicate = existingTitles.some(
         (existing) =>
@@ -329,6 +402,7 @@ Maximum 8 tasks per scan.`,
           category: task.category || 'general',
           priority: task.priority || 2,
           status: 'pending',
+          issue_fingerprint: fingerprint,
         })
         .select()
         .single();
@@ -336,13 +410,18 @@ Maximum 8 tasks per scan.`,
       if (!error && data) created.push(data);
     }
 
+    const skippedCount = recentlyHandled.filter((h) => h.result === 'success').length;
+
     return NextResponse.json({
       created: created.length,
       tasks: created,
+      skipped_handled: skippedCount,
       message:
         created.length > 0
-          ? `✓ Scan complete — ${created.length} new task${created.length > 1 ? 's' : ''} added`
-          : '✓ Scan complete — no new tasks needed',
+          ? `✓ Scan complete — ${created.length} new task${created.length > 1 ? 's' : ''} added${skippedCount > 0 ? `, ${skippedCount} previously handled items skipped` : ''}`
+          : skippedCount > 0
+            ? `✓ Scan complete — all detected issues were recently handled (${skippedCount} skipped)`
+            : '✓ Scan complete — no issues found',
       platform_status: platformStatus,
     });
   } catch (error) {
