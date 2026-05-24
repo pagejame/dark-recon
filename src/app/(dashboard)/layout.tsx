@@ -11,9 +11,9 @@ export default function DashboardLayout({
 }) {
   return (
     <>
-      <div className="flex min-h-screen overflow-x-hidden bg-bg-primary">
+      <div className="flex min-h-screen flex-row overflow-x-hidden bg-bg-primary">
         <Sidebar />
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-20 md:pb-0">
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col overflow-hidden pb-20 md:pb-0">
           <TopBar />
           <TickerTape />
           <PullToRefresh>

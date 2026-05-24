@@ -58,8 +58,8 @@ export default function Sidebar() {
   return (
     <aside
       className={cn(
-        'hidden shrink-0 md:flex flex-col border-r border-border bg-bg-secondary transition-all duration-300',
-        collapsed ? 'w-16' : 'w-56'
+        'flex shrink-0 flex-col border-r border-border bg-bg-secondary transition-all duration-300 max-md:hidden min-h-screen',
+        collapsed ? 'w-16' : 'w-60'
       )}
     >
       <div className="flex h-14 items-center justify-between border-b border-border px-4">
