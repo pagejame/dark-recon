@@ -133,13 +133,17 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
       const action = planData.action;
 
       if (action.action_type === 'nav') {
+        const navUrl =
+          action.endpoint && action.endpoint !== 'null' && action.endpoint !== null
+            ? action.endpoint
+            : '/dashboard';
         setTaskResults((prev) => ({
           ...prev,
-          [task.id]: { success: true, message: `→ Opening ${action.endpoint}...` },
+          [task.id]: { success: true, message: `→ Opening ${navUrl}...` },
         }));
         setExecutingTask(null);
         setTimeout(() => {
-          window.location.href = action.endpoint;
+          window.location.href = navUrl;
         }, 600);
         return;
       }
@@ -147,7 +151,7 @@ export default function TasksWidget({ compact = false }: TasksWidgetProps) {
       if (action.action_type === 'manual') {
         setTaskResults((prev) => ({
           ...prev,
-          [task.id]: { success: false, message: `ℹ️ ${action.explanation}` },
+          [task.id]: { success: true, message: `ℹ️ ${action.explanation}` },
         }));
         setExecutingTask(null);
         return;
