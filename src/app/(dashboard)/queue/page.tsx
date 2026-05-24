@@ -8,6 +8,7 @@ export default function QueuePage() {
   const [loading, setLoading] = useState(true);
   const [building, setBuilding] = useState(false);
   const [buildResult, setBuildResult] = useState<string | null>(null);
+  const [investedPct, setInvestedPct] = useState(0);
 
   const fetchQueue = async () => {
     try {
@@ -46,6 +47,14 @@ export default function QueuePage() {
 
   useEffect(() => {
     fetchQueue();
+    fetch('/api/trading/account')
+      .then((res) => res.json())
+      .then((account) => {
+        const equity = parseFloat(account.equity || '0');
+        const longValue = parseFloat(account.long_market_value || '0');
+        if (equity > 0) setInvestedPct((longValue / equity) * 100);
+      })
+      .catch(() => {});
   }, []);
 
   const pending = queue.filter((t) => t.status === 'pending');
@@ -218,6 +227,7 @@ export default function QueuePage() {
                   trade={trade}
                   onApprove={handleApprove}
                   onReject={handleReject}
+                  existingPositionsPct={investedPct}
                 />
               ))}
             </div>
@@ -242,6 +252,7 @@ export default function QueuePage() {
                   trade={trade}
                   onApprove={handleApprove}
                   onReject={handleReject}
+                  existingPositionsPct={investedPct}
                 />
               ))}
             </div>
@@ -266,6 +277,7 @@ export default function QueuePage() {
                   trade={trade}
                   onApprove={handleApprove}
                   onReject={handleReject}
+                  existingPositionsPct={investedPct}
                 />
               ))}
             </div>

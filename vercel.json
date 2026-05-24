@@ -39,6 +39,10 @@
     {
       "path": "/api/portfolio/auto-close",
       "schedule": "*/5 13-21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/eod-summary",
+      "schedule": "0 20 * * 1-5"
     }
   ]
 }

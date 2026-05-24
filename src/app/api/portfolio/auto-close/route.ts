@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
       .eq('key', 'auto_close_enabled')
       .maybeSingle();
 
-    const autoExecute = settings?.value?.enabled === true;
+    // Default to ON for paper trading — user must explicitly disable in Settings
+    const autoExecute = settings?.value?.enabled !== false;
     const results = await runAutoClose(autoExecute);
 
     return NextResponse.json({ results, auto_execute: autoExecute });

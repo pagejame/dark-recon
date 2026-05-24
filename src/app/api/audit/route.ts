@@ -52,7 +52,10 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch {
-    return NextResponse.json({ events: [], stats: {} });
+    return NextResponse.json({
+      events: [],
+      stats: { total: 0, trades: 0, signals: 0, decisions: 0 },
+    });
   }
 }
 

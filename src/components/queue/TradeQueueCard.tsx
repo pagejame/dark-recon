@@ -32,9 +32,15 @@ interface TradeQueueCardProps {
   trade: QueuedTrade;
   onApprove: (id: string) => void;
   onReject: (id: string, reason?: string) => void;
+  existingPositionsPct?: number;
 }
 
-export default function TradeQueueCard({ trade, onApprove, onReject }: TradeQueueCardProps) {
+export default function TradeQueueCard({
+  trade,
+  onApprove,
+  onReject,
+  existingPositionsPct = 0,
+}: TradeQueueCardProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [showRejectInput, setShowRejectInput] = useState(false);
@@ -261,7 +267,14 @@ export default function TradeQueueCard({ trade, onApprove, onReject }: TradeQueu
             {trade.limit_price ? `$${Number(trade.limit_price).toFixed(2)}` : 'AT OPEN'}
           </div>
         </div>
-        <div style={{ background: '#0d1117', borderRadius: 8, padding: '10px 12px' }}>
+        <div
+          style={{
+            background: (trade.position_size_pct || 0) > 8 ? '#ffd70015' : '#0d1117',
+            border: `1px solid ${(trade.position_size_pct || 0) > 8 ? '#ffd70040' : '#1e2a3a'}`,
+            borderRadius: 8,
+            padding: '10px 12px',
+          }}
+        >
           <div
             style={{
               fontFamily: 'monospace',
@@ -273,11 +286,48 @@ export default function TradeQueueCard({ trade, onApprove, onReject }: TradeQueu
           >
             POSITION SIZE
           </div>
-          <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: '#e8edf5' }}>
-            ${Number(trade.dollar_amount)?.toLocaleString()}{' '}
-            <span style={{ color: '#7a8fa8', fontSize: 10 }}>({trade.position_size_pct}%)</span>
+          <div
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 16,
+              fontWeight: 700,
+              color: (trade.position_size_pct || 0) > 8 ? '#ffd700' : '#e8edf5',
+            }}
+          >
+            {trade.position_size_pct?.toFixed(1)}%
           </div>
+          <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#7a8fa8', marginTop: 2 }}>
+            ${trade.dollar_amount?.toLocaleString()}
+          </div>
+          {(trade.position_size_pct || 0) > 8 && (
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 8,
+                color: '#ffd700',
+                marginTop: 4,
+                letterSpacing: 1,
+              }}
+            >
+              ⚠ LARGE POSITION
+            </div>
+          )}
         </div>
+      </div>
+
+      <div
+        style={{
+          fontFamily: 'monospace',
+          fontSize: 9,
+          color: '#3d5068',
+          marginTop: 8,
+          marginBottom: 14,
+          letterSpacing: 1,
+        }}
+      >
+        PORTFOLIO IMPACT: This trade uses {trade.position_size_pct?.toFixed(1)}% of your portfolio · After
+        execution:{' '}
+        {Math.min(100, existingPositionsPct + (trade.position_size_pct || 0)).toFixed(0)}% invested
       </div>
 
       {trade.options_symbol && (

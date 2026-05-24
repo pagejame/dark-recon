@@ -35,7 +35,7 @@ interface ToggleSetting {
   enabled: boolean;
 }
 
-const DEFAULT_AUTO_CLOSE: ToggleSetting = { enabled: false };
+const DEFAULT_AUTO_CLOSE: ToggleSetting = { enabled: true };
 const DEFAULT_WATCHLIST_AUTOPOP: ToggleSetting = { enabled: true };
 
 const DEFAULT_RISK: RiskSettings = {
@@ -502,7 +502,7 @@ export default function SettingsPage() {
             <div style={{ borderTop: '1px solid #1e2a3a40', marginTop: 16, paddingTop: 8 }}>
               <SettingRow
                 label="Auto-Close on Stop Breach"
-                description="Automatically close positions when stop loss is breached during market hours. When OFF, a close order is queued for your approval instead."
+                description="Automatically close positions when stop loss is breached during market hours. ON by default for paper trading — switch OFF to require manual approval instead."
               >
                 <Toggle
                   value={autoClose.enabled}
@@ -652,6 +652,27 @@ export default function SettingsPage() {
                 }}
               >
                 {testEmailLoading ? 'SENDING…' : 'SEND TEST EMAIL'}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await fetch('/api/email/eod', { method: 'POST' });
+                  const data = await res.json();
+                  alert(data.message || 'EOD email sent');
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: '#3d9aff15',
+                  border: '1px solid #3d9aff40',
+                  borderRadius: 8,
+                  color: '#3d9aff',
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  letterSpacing: 1,
+                  cursor: 'pointer',
+                }}
+              >
+                SEND EOD SUMMARY
               </button>
               {testEmailResult && (
                 <span

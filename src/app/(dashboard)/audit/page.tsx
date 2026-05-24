@@ -145,6 +145,7 @@ export default function AuditPage() {
       setStats(data.stats || { total: 0, trades: 0, signals: 0, decisions: 0 });
     } catch {
       setEvents([]);
+      setStats({ total: 0, trades: 0, signals: 0, decisions: 0 });
     } finally {
       setLoading(false);
     }
@@ -341,8 +342,15 @@ export default function AuditPage() {
             >
               {s.label}
             </div>
-            <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 28, fontWeight: 800, color: s.color }}>
-              {s.value}
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 28,
+                fontWeight: 700,
+                color: loading ? '#e8edf5' : s.color,
+              }}
+            >
+              {loading ? '—' : (s.value || 0).toLocaleString()}
             </div>
           </div>
         ))}
