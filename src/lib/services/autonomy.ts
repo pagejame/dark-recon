@@ -16,6 +16,15 @@ export interface AutonomyConfig {
   max_position_pct: number;
   daily_trade_limit: number;
   days_remaining: number | null;
+  trading_mode: 'day_trading' | 'swing_trading';
+  profit_target_pct: number;
+  profit_target_2_pct: number;
+  profit_target_3_pct: number;
+  stop_loss_pct: number;
+  trailing_stop_pct: number;
+  short_selling_enabled: boolean;
+  same_day_reentry: boolean;
+  max_concurrent_positions: number;
 }
 
 interface QueueTradeRow {
@@ -67,10 +76,19 @@ export async function getAutonomyConfig(): Promise<AutonomyConfig> {
     enabled: config.enabled !== false,
     started_at: (config.started_at as string) || null,
     ends_at: (config.ends_at as string) || null,
-    min_conviction: (settings['autonomy_min_conviction']?.score as number) || 8,
-    max_position_pct: (settings['autonomy_max_position_pct']?.pct as number) || 5,
-    daily_trade_limit: (settings['autonomy_daily_trade_limit']?.limit as number) || 3,
+    min_conviction: (settings['autonomy_min_conviction']?.score as number) || 7,
+    max_position_pct: (settings['autonomy_max_position_pct']?.pct as number) || 3,
+    daily_trade_limit: (settings['autonomy_daily_trade_limit']?.limit as number) || 100,
     days_remaining: daysRemaining,
+    trading_mode: (config.trading_mode as 'day_trading' | 'swing_trading') || 'day_trading',
+    profit_target_pct: (config.profit_target_pct as number) || 2,
+    profit_target_2_pct: (config.profit_target_2_pct as number) || 5,
+    profit_target_3_pct: (config.profit_target_3_pct as number) || 10,
+    stop_loss_pct: (config.stop_loss_pct as number) || 1.5,
+    trailing_stop_pct: (config.trailing_stop_pct as number) || 1,
+    short_selling_enabled: config.short_selling_enabled !== false,
+    same_day_reentry: config.same_day_reentry !== false,
+    max_concurrent_positions: (config.max_concurrent_positions as number) || 10,
   };
 }
 
@@ -82,7 +100,47 @@ export async function enableFullAutonomy(days = 30): Promise<void> {
   await supabase.from('settings').upsert(
     {
       key: 'full_autonomy_enabled',
-      value: { enabled: true, started_at: startedAt, ends_at: endsAt },
+      value: {
+        enabled: true,
+        started_at: startedAt,
+        ends_at: endsAt,
+        trading_mode: 'day_trading',
+        profit_target_pct: 2,
+        profit_target_2_pct: 5,
+        profit_target_3_pct: 10,
+        stop_loss_pct: 1.5,
+        trailing_stop_pct: 1,
+        short_selling_enabled: true,
+        same_day_reentry: true,
+        max_concurrent_positions: 10,
+      },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' }
+  );
+
+  await supabase.from('settings').upsert(
+    {
+      key: 'autonomy_daily_trade_limit',
+      value: { limit: 100 },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' }
+  );
+
+  await supabase.from('settings').upsert(
+    {
+      key: 'autonomy_min_conviction',
+      value: { score: 7 },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' }
+  );
+
+  await supabase.from('settings').upsert(
+    {
+      key: 'autonomy_max_position_pct',
+      value: { pct: 3 },
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'key' }

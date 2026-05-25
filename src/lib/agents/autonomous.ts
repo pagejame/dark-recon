@@ -141,6 +141,36 @@ ${highConviction
   }
 
   try {
+    const { data: intradaySignals } = await supabase
+      .from('signals')
+      .select('ticker, signal_type, strength, notes')
+      .in('signal_type', [
+        'gap_and_go',
+        'vwap_reclaim',
+        'orb_breakout',
+        'momentum_continuation',
+        'reversal_short',
+        'high_of_day_break',
+      ])
+      .eq('status', 'pending')
+      .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false });
+
+    if ((intradaySignals || []).length > 0) {
+      sections.push(`LIVE INTRADAY SETUPS (last 5 min):
+${(intradaySignals || [])
+  .map(
+    (s: { ticker: string; signal_type: string; notes?: string }) =>
+      `  ${s.ticker} [${s.signal_type.replace(/_/g, ' ').toUpperCase()}]: ${s.notes || ''}`
+  )
+  .join('\n')}`);
+      freshData.intraday_signals = intradaySignals;
+    }
+  } catch {
+    /* skip */
+  }
+
+  try {
     const [priceAlerts, posAlerts] = await Promise.all([
       supabase.from('price_alerts').select('*').in('status', ['active', 'triggered']),
       supabase
@@ -500,10 +530,27 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
 
   const pipelineInstruction =
     autoTheses && autoTheses.length > 0
-      ? `\nPIPELINE READY: ${autoTheses.length} trade theses built and confirmed by multiple sources. These have passed the full intelligence pipeline (Scanner → Signal Confirmation → Thesis Builder). In full autonomy mode, execute any with conviction ≥ 8 that fit portfolio rules.`
+      ? `\nPIPELINE READY: ${autoTheses.length} trade theses built and confirmed by multiple sources. These have passed the full intelligence pipeline (Scanner → Signal Confirmation → Thesis Builder). In full autonomy mode, execute any with conviction ≥ ${autonomy.min_conviction} that fit portfolio rules.`
       : confirmedSignals && confirmedSignals.length > 0
         ? `\nCONFIRMED SIGNALS: ${confirmedSignals.length} tickers confirmed by multiple sources. Build theses and evaluate for execution.`
         : '';
+
+  const dayTradingInstruction =
+    autonomy.trading_mode === 'day_trading'
+      ? `
+DAY TRADING MODE ACTIVE:
+- This is an intraday day trading system. Make money TODAY.
+- All positions should be opened AND closed within the same trading day
+- Target +${autonomy.profit_target_pct}% quick scalps, +${autonomy.profit_target_2_pct}% momentum plays, +${autonomy.profit_target_3_pct}% runners
+- Stop losses are tight: -${autonomy.stop_loss_pct}% intraday
+- Short selling is ${autonomy.short_selling_enabled ? 'enabled' : 'disabled'} — profit when stocks go DOWN too
+- Max ${autonomy.daily_trade_limit} trades per day — trade actively
+- Re-entry on same ticker is ${autonomy.same_day_reentry ? 'allowed' : 'not allowed'}
+- Prioritize: High of day breaks, ORB breakouts, VWAP reclaims, gap and go
+- In full autonomy: execute any setup with conviction ≥ ${autonomy.min_conviction} that fits position sizing
+- NEVER hold a losing position hoping for a recovery — cut at -${autonomy.stop_loss_pct}% every time
+`
+      : '';
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
@@ -515,7 +562,7 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
 
 ${tierNote}
 ${autonomyInstruction}
-${sectorInstruction}${macroInstruction}${pipelineInstruction}
+${sectorInstruction}${macroInstruction}${pipelineInstruction}${dayTradingInstruction}
 
 FRESH PLATFORM STATUS (just gathered):
 ${status}

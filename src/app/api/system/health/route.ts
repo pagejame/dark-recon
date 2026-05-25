@@ -287,7 +287,7 @@ interface CronRunRow {
 async function checkCronRuns(): Promise<HealthCheck> {
   try {
     const supabase = createAdminClient();
-    const criticalJobs = ['morning-run', 'autonomous-agent', 'market-scan'];
+    const criticalJobs = ['morning-run', 'autonomous-agent', 'market-scan', 'agent-loop'];
 
     const { data } = await supabase
       .from('cron_runs')
