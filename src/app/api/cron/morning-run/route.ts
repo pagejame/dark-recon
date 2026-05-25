@@ -16,8 +16,9 @@ import { runRebalanceCheck } from '@/lib/agents/rebalance';
 import { calculateSignalWeights } from '@/lib/services/signal-learning';
 import { runWatchlistAutoPop } from '@/lib/services/watchlist-autopop';
 import { autoExecutePendingTrades } from '@/lib/services/autonomy';
+import { runFullMarketScan } from '@/lib/services/market-scanner';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -198,6 +199,18 @@ export async function GET(request: NextRequest) {
     results.watchlist_autopop = 'FAILED';
     console.error('Watchlist autopop failed');
   }
+
+  runFullMarketScan()
+    .then((scanResult) => {
+      results.market_scan = `SUCCESS — ${scanResult.total_scanned} stocks scanned, ${scanResult.top_opportunities.length} opportunities found, ${scanResult.auto_added.length} added to watchlist`;
+      if (scanResult.auto_added.length > 0) {
+        results.market_scan_additions = scanResult.auto_added.join(', ');
+      }
+    })
+    .catch((e) => {
+      results.market_scan = 'FAILED';
+      console.error('Market scan error:', e);
+    });
 
   try {
     const supabase = createAdminClient();

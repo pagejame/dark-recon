@@ -5,8 +5,8 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Bot,
-  CheckSquare,
   ListChecks,
+  Search,
   TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/autopilot', label: 'Autopilot', icon: Bot },
-  { href: '/tasks', label: 'Tasks', icon: CheckSquare },
+  { href: '/scanner', label: 'Scanner', icon: Search },
   { href: '/queue', label: 'Queue', icon: ListChecks },
   { href: '/portfolio', label: 'Portfolio', icon: TrendingUp },
 ];

@@ -250,6 +250,34 @@ ${highStrength
     }
 
     try {
+      const { data: scanResults } = await supabase
+        .from('scanner_results')
+        .select('ticker, scan_type, conviction_score, claude_thesis, added_to_watchlist')
+        .eq('scan_date', new Date().toISOString().split('T')[0])
+        .gte('conviction_score', 7)
+        .order('conviction_score', { ascending: false })
+        .limit(5);
+
+      if ((scanResults || []).length > 0) {
+        sections.push(`MARKET-WIDE SCANNER TOP FINDINGS TODAY:
+${(scanResults || [])
+  .map(
+    (r: {
+      ticker: string;
+      conviction_score: number;
+      claude_thesis: string;
+      added_to_watchlist: boolean;
+    }) =>
+      `  ${r.ticker} [conviction ${r.conviction_score}/10]: ${r.claude_thesis}${r.added_to_watchlist ? ' ← AUTO-ADDED TO WATCHLIST' : ''}`
+  )
+  .join('\n')}`);
+        freshData.market_scan_results = scanResults;
+      }
+    } catch {
+      /* skip */
+    }
+
+    try {
       const congressTrades = await getRecentCongressionalTrades(7, 20);
       const recentTrades = congressTrades.slice(0, 5);
 
