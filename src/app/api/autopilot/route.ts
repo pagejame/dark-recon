@@ -50,6 +50,31 @@ export async function GET(request: NextRequest) {
         generated_at: report.generated_at,
       });
 
+      if (report.action_items && Array.isArray(report.action_items)) {
+        const highPriority = report.action_items.filter(
+          (item: { priority?: string }) => item.priority === 'high'
+        );
+
+        for (const item of highPriority.slice(0, 3)) {
+          if (!item.ticker) continue;
+          const notes = item.action || item.rationale || '';
+          try {
+            await supabase.from('signals').insert({
+              ticker: item.ticker,
+              signal_type: 'autopilot_action',
+              strength: 'high',
+              status: 'pending',
+              source: 'Autopilot',
+              notes,
+              summary: notes,
+              created_at: new Date().toISOString(),
+            });
+          } catch (e) {
+            console.error('Autopilot signal insert error:', e);
+          }
+        }
+      }
+
       if (report.top_opportunities) {
         await audit.autopilotGenerated({
           date: report.date,

@@ -7,6 +7,9 @@ import { runIntelligenceSweep } from '@/lib/agents/intelligence';
 import { getRecentCongressionalTrades } from '@/lib/api/smartmoney';
 import { getUnusualOptionsFlow } from '@/lib/api/options-flow';
 import { calculateSignalWeights } from '@/lib/services/signal-learning';
+import { runSignalConfirmation } from '@/lib/services/signal-confirmation';
+import { buildThesesForConfirmedSignals, type AutoThesis } from '@/lib/services/auto-thesis';
+import type { ConfirmedSignal } from '@/lib/services/signal-confirmation';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -226,27 +229,52 @@ Executed today: ${executedToday.length}`);
     /* skip */
   }
 
-  // TIER 2 — Every 30 minutes (full sweeps)
+  // TIER 2 — Every 30 minutes (full intelligence pipeline)
   if (tier >= 2) {
-    sections.push(`\n--- TIER 2 REFRESH (30-min cycle) ---`);
+    sections.push(`\n--- TIER 2: FULL INTELLIGENCE PIPELINE ---`);
 
     try {
       const sweepResult = await runIntelligenceSweep();
       const highStrength = sweepResult.filter((s) => s.strength === 'high');
-
-      sections.push(`FRESH INTELLIGENCE SWEEP (just ran):
-Total signals: ${sweepResult.length} | High strength: ${highStrength.length}
-${highStrength
-  .slice(0, 5)
-  .map(
-    (s) =>
-      `  [${s.source}] ${s.ticker || 'MARKET'}: ${s.headline?.slice(0, 100)}`
-  )
-  .join('\n')}`);
-
+      sections.push(`INTELLIGENCE SWEEP: ${sweepResult.length} signals, ${highStrength.length} high strength`);
       freshData.intelligence_signals = highStrength;
     } catch {
       sections.push('INTELLIGENCE SWEEP: Failed to run');
+    }
+
+    try {
+      const confirmedSignals = await runSignalConfirmation();
+      freshData.confirmed_signals = confirmedSignals;
+
+      if (confirmedSignals.length > 0) {
+        sections.push(`CONFIRMED SIGNALS (cross-referenced from all sources):
+${confirmedSignals
+  .slice(0, 8)
+  .map(
+    (s: ConfirmedSignal) =>
+      `  ${s.ticker} [${s.confirmation_score}/10]: ${s.source_count} sources (${s.sources.join(', ')}) — ${s.best_reason.slice(0, 100)}`
+  )
+  .join('\n')}`);
+
+        const theses = await buildThesesForConfirmedSignals(confirmedSignals);
+        freshData.auto_theses = theses;
+
+        if (theses.length > 0) {
+          sections.push(`AUTO-BUILT THESES (ready for execution):
+${theses
+  .map(
+    (t: AutoThesis) =>
+      `  ${t.ticker} [conviction ${t.conviction_score}/10]: ${t.thesis} | Catalyst: ${t.catalyst}`
+  )
+  .join('\n')}`);
+        }
+      } else {
+        sections.push('SIGNAL CONFIRMATION: No multi-source confirmations this cycle');
+      }
+    } catch (e) {
+      sections.push(
+        `SIGNAL CONFIRMATION: Failed — ${e instanceof Error ? e.message : 'error'}`
+      );
     }
 
     try {
@@ -268,56 +296,6 @@ Lagging: ${rotation.lagging_sectors.map((s) => `${s.sector} ${s.change_1d.toFixe
       const macro = await getMacroSnapshot();
       sections.push(macro.market_backdrop);
       freshData.macro_regime = macro.macro_regime;
-    } catch {
-      /* skip */
-    }
-
-    try {
-      const { data: momentumResults } = await supabase
-        .from('scanner_results')
-        .select('ticker, conviction_score, claude_thesis, signal_data')
-        .eq('scan_type', 'momentum')
-        .eq('scan_date', new Date().toISOString().split('T')[0])
-        .gte('conviction_score', 7)
-        .order('signal_strength', { ascending: false })
-        .limit(5);
-
-      if ((momentumResults || []).length > 0) {
-        sections.push(`MOMENTUM LEADERS (outperforming market today):
-${(momentumResults || [])
-  .map(
-    (r: { ticker: string; claude_thesis: string }) => `  ${r.ticker}: ${r.claude_thesis}`
-  )
-  .join('\n')}`);
-      }
-    } catch {
-      /* skip */
-    }
-
-    try {
-      const { data: scanResults } = await supabase
-        .from('scanner_results')
-        .select('ticker, scan_type, conviction_score, claude_thesis, added_to_watchlist')
-        .eq('scan_date', new Date().toISOString().split('T')[0])
-        .gte('conviction_score', 7)
-        .order('conviction_score', { ascending: false })
-        .limit(5);
-
-      if ((scanResults || []).length > 0) {
-        sections.push(`MARKET-WIDE SCANNER TOP FINDINGS TODAY:
-${(scanResults || [])
-  .map(
-    (r: {
-      ticker: string;
-      conviction_score: number;
-      claude_thesis: string;
-      added_to_watchlist: boolean;
-    }) =>
-      `  ${r.ticker} [conviction ${r.conviction_score}/10]: ${r.claude_thesis}${r.added_to_watchlist ? ' ← AUTO-ADDED TO WATCHLIST' : ''}`
-  )
-  .join('\n')}`);
-        freshData.market_scan_results = scanResults;
-      }
     } catch {
       /* skip */
     }
@@ -517,6 +495,16 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
     ? `\nMACRO REGIME: ${String(fresh_data.macro_regime).toUpperCase()} — adjust all trade sizing and conviction accordingly.`
     : '';
 
+  const autoTheses = fresh_data.auto_theses as AutoThesis[] | undefined;
+  const confirmedSignals = fresh_data.confirmed_signals as ConfirmedSignal[] | undefined;
+
+  const pipelineInstruction =
+    autoTheses && autoTheses.length > 0
+      ? `\nPIPELINE READY: ${autoTheses.length} trade theses built and confirmed by multiple sources. These have passed the full intelligence pipeline (Scanner → Signal Confirmation → Thesis Builder). In full autonomy mode, execute any with conviction ≥ 8 that fit portfolio rules.`
+      : confirmedSignals && confirmedSignals.length > 0
+        ? `\nCONFIRMED SIGNALS: ${confirmedSignals.length} tickers confirmed by multiple sources. Build theses and evaluate for execution.`
+        : '';
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2000,
@@ -527,7 +515,7 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
 
 ${tierNote}
 ${autonomyInstruction}
-${sectorInstruction}${macroInstruction}
+${sectorInstruction}${macroInstruction}${pipelineInstruction}
 
 FRESH PLATFORM STATUS (just gathered):
 ${status}

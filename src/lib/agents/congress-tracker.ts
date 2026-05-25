@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getRecentCongressionalTrades } from '@/lib/api/smartmoney';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -57,6 +58,31 @@ function matchesTrader(representative: string, traderName: string): boolean {
 
 export async function runCongressTracker(): Promise<CongressTrackerReport> {
   const allTrades = await getRecentCongressionalTrades(90, 200);
+
+  const recentBuys = allTrades.filter(
+    (t) =>
+      t.type === 'Purchase' &&
+      new Date(t.transaction_date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  );
+
+  const supabase = createAdminClient();
+  for (const trade of recentBuys.slice(0, 5)) {
+    const notes = `${trade.representative} purchased ${trade.ticker} (${trade.amount}) on ${trade.transaction_date}`;
+    try {
+      await supabase.from('signals').insert({
+        ticker: trade.ticker,
+        signal_type: 'congressional_buy',
+        strength: 'high',
+        status: 'pending',
+        source: `Smart Money — ${trade.representative}`,
+        notes,
+        summary: notes,
+        created_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('Congress signal insert error:', e);
+    }
+  }
 
   const top10Trades = allTrades.filter((trade) =>
     TOP_10_CONGRESS.some((trader) => matchesTrader(trade.representative, trader.name))

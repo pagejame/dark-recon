@@ -103,6 +103,14 @@ interface AutonomyStatus {
   ends_at: string | null;
 }
 
+interface PipelineStatus {
+  signals_today: number;
+  theses_built: number;
+  high_conviction: number;
+  pipeline_active: boolean;
+  status: string;
+}
+
 function isMarketOpenET(): boolean {
   const now = new Date();
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -130,6 +138,7 @@ export default function DashboardContent() {
   const [marketOpen, setMarketOpen] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AutonomousAgentRun | null>(null);
   const [autonomyConfig, setAutonomyConfig] = useState<AutonomyStatus | null>(null);
+  const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -369,6 +378,16 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const fetchPipelineStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/signals/pipeline');
+      const data = await res.json();
+      setPipelineStatus(data);
+    } catch {
+      setPipelineStatus(null);
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void Promise.allSettled([
       fetchBriefing(),
@@ -384,6 +403,7 @@ export default function DashboardContent() {
       fetchPreMarket(),
       fetchAgentStatus(),
       fetchAutonomy(),
+      fetchPipelineStatus(),
     ]);
   }, [
     fetchBriefing,
@@ -399,6 +419,7 @@ export default function DashboardContent() {
     fetchPreMarket,
     fetchAgentStatus,
     fetchAutonomy,
+    fetchPipelineStatus,
   ]);
 
   useEffect(() => {
@@ -1086,6 +1107,89 @@ export default function DashboardContent() {
               >
                 VIEW AGENT LOG →
               </a>
+            </div>
+          )}
+          {pipelineStatus && (
+            <div
+              style={{
+                background: '#111620',
+                border: `1px solid ${pipelineStatus.pipeline_active ? '#00ff8830' : '#1e2a3a'}`,
+                borderLeft: `3px solid ${pipelineStatus.pipeline_active ? '#00ff88' : '#7a8fa8'}`,
+                borderRadius: 10,
+                padding: '14px 16px',
+                marginBottom: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 10,
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    letterSpacing: 3,
+                    color: '#7a8fa8',
+                  }}
+                >
+                  SIGNAL PIPELINE
+                </div>
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    letterSpacing: 2,
+                    fontWeight: 700,
+                    padding: '3px 10px',
+                    borderRadius: 20,
+                    background: pipelineStatus.pipeline_active ? '#00ff8815' : '#7a8fa815',
+                    color: pipelineStatus.pipeline_active ? '#00ff88' : '#7a8fa8',
+                    border: '1px solid currentColor',
+                  }}
+                >
+                  {pipelineStatus.pipeline_active ? 'ACTIVE' : 'IDLE'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#3d5068', letterSpacing: 2 }}>
+                    CONFIRMED
+                  </div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 700, color: '#e8edf5' }}>
+                    {pipelineStatus.signals_today}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#3d5068', letterSpacing: 2 }}>
+                    THESES BUILT
+                  </div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 700, color: '#e8edf5' }}>
+                    {pipelineStatus.theses_built}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 8, color: '#3d5068', letterSpacing: 2 }}>
+                    HIGH CONVICTION
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 18,
+                      fontWeight: 700,
+                      color: pipelineStatus.high_conviction > 0 ? '#00ff88' : '#e8edf5',
+                    }}
+                  >
+                    {pipelineStatus.high_conviction}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: '#7a8fa8', lineHeight: 1.4 }}>{pipelineStatus.status}</div>
             </div>
           )}
           <AgentStatusGrid agents={agents} loading={agentsLoading} />
