@@ -403,6 +403,86 @@ ${(earnings || [])
     }
 
     try {
+      const { getFearGreedIndex } = await import('@/lib/api/market-sentiment');
+      const fearGreed = await withTier2Timeout(getFearGreedIndex(), 'Fear & Greed').catch(
+        () => null
+      );
+      if (fearGreed) {
+        sections.push(`MARKET SENTIMENT (Fear & Greed):
+Index: ${fearGreed.value}/100 — ${fearGreed.label}
+Signal: ${fearGreed.trading_signal}
+${fearGreed.is_contrarian_buy ? '⚡ CONTRARIAN BUY SIGNAL ACTIVE — Extreme fear historically precedes recoveries' : ''}
+${fearGreed.is_contrarian_sell ? '⚠️ CONTRARIAN CAUTION — Extreme greed historically precedes pullbacks' : ''}`);
+        freshData.fear_greed = fearGreed;
+      }
+    } catch {
+      /* skip */
+    }
+
+    try {
+      const { getUpcomingEconomicEvents } = await import('@/lib/api/market-sentiment');
+      const events = await withTier2Timeout(getUpcomingEconomicEvents(), 'Economic calendar').catch(
+        () => [] as Awaited<ReturnType<typeof getUpcomingEconomicEvents>>
+      );
+      const todayEvents = events.filter((e) => e.is_today);
+      const thisWeekEvents = events.filter((e) => e.is_this_week && !e.is_today);
+
+      if (todayEvents.length > 0 || thisWeekEvents.length > 0) {
+        sections.push(`ECONOMIC CALENDAR:
+${todayEvents.length > 0 ? `TODAY: ${todayEvents.map((e) => `${e.event} at ${e.time} [${e.impact.toUpperCase()} IMPACT]`).join(', ')}` : ''}
+${thisWeekEvents.length > 0 ? `THIS WEEK: ${thisWeekEvents.slice(0, 3).map((e) => `${e.event} on ${e.date}`).join(', ')}` : ''}
+${todayEvents.some((e) => e.impact === 'high') ? '⚠️ HIGH IMPACT RELEASE TODAY — Consider reducing position sizes and tightening stops before release' : ''}`);
+        freshData.economic_events = events;
+      }
+    } catch {
+      /* skip */
+    }
+
+    try {
+      const { getRecentInsiderTrades } = await import('@/lib/api/fmp');
+      const insiders = await withTier2Timeout(getRecentInsiderTrades(10), 'Insider trades').catch(
+        () => [] as Awaited<ReturnType<typeof getRecentInsiderTrades>>
+      );
+      const highValue = insiders.filter((t) => t.signal_strength === 'high');
+
+      if (highValue.length > 0) {
+        sections.push(`CORPORATE INSIDER BUYING (large purchases):
+${highValue
+  .slice(0, 5)
+  .map(
+    (t) =>
+      `  ${t.ticker}: ${t.insider_name} (${t.insider_title}) bought $${(t.dollar_value / 1000).toFixed(0)}K on ${t.transaction_date}`
+  )
+  .join('\n')}`);
+        freshData.insider_trades = highValue;
+      }
+    } catch {
+      /* skip */
+    }
+
+    try {
+      const { scanForSqueezeSetups } = await import('@/lib/api/short-interest');
+      const watchlistResult = await supabase.from('watchlist').select('ticker').limit(15);
+      const tickers = (watchlistResult.data || []).map((w: { ticker: string }) => w.ticker);
+      const squeezes = await withTier2Timeout(scanForSqueezeSetups(tickers), 'Short interest').catch(
+        () => [] as Awaited<ReturnType<typeof scanForSqueezeSetups>>
+      );
+
+      if (squeezes.length > 0) {
+        sections.push(`SQUEEZE SETUPS DETECTED:
+${squeezes
+  .map(
+    (s) =>
+      `  ${s.ticker}: ${s.short_float_pct.toFixed(1)}% float short, ${s.days_to_cover.toFixed(1)} days to cover — ${s.reason}`
+  )
+  .join('\n')}`);
+        freshData.squeeze_setups = squeezes;
+      }
+    } catch {
+      /* skip */
+    }
+
+    try {
       const weights = await calculateSignalWeights();
       if (weights.total_signals_tracked > 0) {
         sections.push(`SIGNAL PERFORMANCE (learning layer):

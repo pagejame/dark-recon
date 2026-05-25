@@ -6,6 +6,8 @@ import type { MacroSnapshot } from '@/lib/api/fred';
 import type { AnalystData } from '@/lib/api/yahoo-finance';
 import type { SectorRotation } from '@/lib/services/sector-rotation';
 import type { MomentumStock } from '@/lib/services/momentum-screener';
+import type { FearGreedData, EconomicEvent } from '@/lib/api/market-sentiment';
+import type { InsiderTrade } from '@/lib/api/fmp';
 
 interface ScannerResult {
   ticker: string;
@@ -30,6 +32,12 @@ interface ScanResponse {
   analyst_picks?: AnalystData[];
   scanned_at?: string;
   cached?: boolean;
+}
+
+interface SentimentData {
+  fear_greed: FearGreedData | null;
+  economic_events: EconomicEvent[];
+  insider_trades: InsiderTrade[];
 }
 
 interface DbResult {
@@ -76,6 +84,7 @@ export default function MarketScannerPage() {
   const [sortKey, setSortKey] = useState<SortKey>('conviction_score');
   const [sortAsc, setSortAsc] = useState(false);
   const [watchlistTickers, setWatchlistTickers] = useState<Set<string>>(new Set());
+  const [sentiment, setSentiment] = useState<SentimentData | null>(null);
 
   const fetchWatchlist = useCallback(async () => {
     try {
@@ -117,6 +126,10 @@ export default function MarketScannerPage() {
 
   useEffect(() => {
     void runScan(false);
+    void fetch('/api/sentiment')
+      .then((r) => r.json())
+      .then((data) => setSentiment(data))
+      .catch(() => setSentiment(null));
   }, [runScan]);
 
   const addToWatchlist = async (ticker: string, notes?: string) => {
@@ -322,6 +335,101 @@ export default function MarketScannerPage() {
                   {scanTypeLabel(type)} · {count}
                 </span>
               ))}
+            </div>
+          )}
+
+          {sentiment?.fear_greed && (
+            <div
+              style={{
+                background: '#111620',
+                border: `1px solid ${
+                  sentiment.fear_greed.is_contrarian_buy
+                    ? '#00ff8840'
+                    : sentiment.fear_greed.is_contrarian_sell
+                      ? '#ff3d5a40'
+                      : '#1e2a3a'
+                }`,
+                borderLeft: `3px solid ${
+                  sentiment.fear_greed.value <= 25
+                    ? '#00ff88'
+                    : sentiment.fear_greed.value >= 75
+                      ? '#ff3d5a'
+                      : sentiment.fear_greed.value <= 40
+                        ? '#3d9aff'
+                        : sentiment.fear_greed.value >= 60
+                          ? '#ffd700'
+                          : '#7a8fa8'
+                }`,
+                borderRadius: 10,
+                padding: 20,
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 9,
+                      letterSpacing: 3,
+                      color: '#7a8fa8',
+                      marginBottom: 6,
+                    }}
+                  >
+                    FEAR & GREED INDEX
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 28,
+                      fontWeight: 700,
+                      color: '#e8edf5',
+                    }}
+                  >
+                    {sentiment.fear_greed.value}
+                  </div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#7a8fa8' }}>
+                    {sentiment.fear_greed.label}
+                  </div>
+                </div>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontSize: 12, color: '#7a8fa8', lineHeight: 1.6 }}>
+                    {sentiment.fear_greed.trading_signal}
+                  </div>
+                  {sentiment.fear_greed.is_contrarian_buy && (
+                    <div
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        color: '#00ff88',
+                        marginTop: 6,
+                      }}
+                    >
+                      ⚡ CONTRARIAN BUY SIGNAL ACTIVE
+                    </div>
+                  )}
+                  {sentiment.fear_greed.is_contrarian_sell && (
+                    <div
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        color: '#ff3d5a',
+                        marginTop: 6,
+                      }}
+                    >
+                      ⚠️ CONTRARIAN CAUTION SIGNAL ACTIVE
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

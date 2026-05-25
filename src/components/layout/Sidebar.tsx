@@ -23,6 +23,7 @@ import {
   Trophy,
   LineChart,
   Layers,
+  Activity,
   Rocket,
   Shield,
 } from 'lucide-react';
@@ -39,6 +40,7 @@ const navItems = [
   { href: '/smartmoney', label: 'Smart Money', icon: TrendingUp },
   { href: '/intelligence', label: 'Intelligence', icon: Radio },
   { href: '/recon', label: 'Recon Feed', icon: Radar },
+  { href: '/scanner', label: 'Sentiment', icon: Activity },
   { href: '/scanner', label: 'Market Scanner', icon: Search },
   { href: '/signals', label: 'Signals', icon: Zap },
   { href: '/earnings', label: 'Earnings', icon: Calendar },

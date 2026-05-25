@@ -1,5 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getRecentCongressionalTrades } from '@/lib/api/smartmoney';
+import {
+  getRecentInsiderTrades,
+  getRecentAnalystChanges,
+  getRecentEarningsSurprises,
+  getRecentPressReleases,
+} from '@/lib/api/fmp';
 
 interface RawSignal {
   ticker: string;
@@ -207,6 +213,78 @@ export async function runSignalConfirmation(): Promise<ConfirmedSignal[]> {
       });
     }
   );
+
+  try {
+    const insiderTrades = await getRecentInsiderTrades(15);
+    insiderTrades.forEach((trade) => {
+      if (!trade.ticker) return;
+      rawSignals.push({
+        ticker: trade.ticker,
+        source: `Corporate Insider (${trade.insider_title})`,
+        signal_type: 'insider_purchase',
+        strength: trade.signal_strength,
+        reason: `${trade.insider_name} (${trade.insider_title}) purchased $${(trade.dollar_value / 1000).toFixed(0)}K of ${trade.ticker} on ${trade.transaction_date}`,
+        data: trade as unknown as Record<string, unknown>,
+      });
+    });
+  } catch {
+    /* skip */
+  }
+
+  try {
+    const upgrades = await getRecentAnalystChanges(10);
+    upgrades
+      .filter((r) => r.signal === 'bullish')
+      .forEach((upgrade) => {
+        rawSignals.push({
+          ticker: upgrade.ticker,
+          source: `Analyst (${upgrade.analyst_company})`,
+          signal_type: 'analyst_upgrade',
+          strength: 'medium',
+          reason: `${upgrade.analyst_company} ${upgrade.action}: ${upgrade.from_grade} → ${upgrade.to_grade}${upgrade.price_target ? ` (target: $${upgrade.price_target})` : ''}`,
+          data: upgrade as unknown as Record<string, unknown>,
+        });
+      });
+  } catch {
+    /* skip */
+  }
+
+  try {
+    const releases = await getRecentPressReleases(20);
+    releases
+      .filter((pr) => pr.is_material)
+      .slice(0, 5)
+      .forEach((pr) => {
+        rawSignals.push({
+          ticker: pr.ticker,
+          source: 'Press Release',
+          signal_type: 'press_release',
+          strength: 'medium',
+          reason: pr.title.slice(0, 150),
+          data: pr as unknown as Record<string, unknown>,
+        });
+      });
+  } catch {
+    /* skip */
+  }
+
+  try {
+    const surprises = await getRecentEarningsSurprises(20);
+    surprises
+      .filter((s) => s.direction === 'beat' && s.surprise_pct >= 10)
+      .forEach((surprise) => {
+        rawSignals.push({
+          ticker: surprise.ticker,
+          source: 'Earnings Beat (FMP)',
+          signal_type: 'earnings_beat',
+          strength: surprise.surprise_pct >= 20 ? 'high' : 'medium',
+          reason: `Earnings beat by ${surprise.surprise_pct.toFixed(1)}% — EPS: $${surprise.actual_eps} vs est $${surprise.estimated_eps}`,
+          data: surprise as unknown as Record<string, unknown>,
+        });
+      });
+  } catch {
+    /* skip */
+  }
 
   const tickerMap: Record<string, RawSignal[]> = {};
   rawSignals.forEach((signal) => {

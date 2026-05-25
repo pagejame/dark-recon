@@ -245,6 +245,34 @@ async function checkFRED(): Promise<HealthCheck> {
   }
 }
 
+async function checkFMP(): Promise<HealthCheck> {
+  const key = process.env.FMP_API_KEY;
+  if (!key) {
+    return {
+      name: 'FMP Research API',
+      status: 'warn',
+      message: 'FMP_API_KEY not set — insider trades, analyst upgrades, press releases unavailable',
+    };
+  }
+  try {
+    const res = await fetch(
+      `https://financialmodelingprep.com/api/v3/upgrades-downgrades?limit=1&apikey=${key}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) {
+      return { name: 'FMP Research API', status: 'warn', message: `FMP returned ${res.status}` };
+    }
+    const data = await res.json();
+    return {
+      name: 'FMP Research API',
+      status: 'pass',
+      message: `Connected — latest analyst change: ${Array.isArray(data) && data[0] ? `${data[0].gradingCompany} on ${data[0].symbol}` : 'data available'}`,
+    };
+  } catch {
+    return { name: 'FMP Research API', status: 'warn', message: 'Connection timeout' };
+  }
+}
+
 async function checkEnvVars(): Promise<HealthCheck> {
   const required = [
     'ALPACA_API_KEY',
@@ -259,6 +287,7 @@ async function checkEnvVars(): Promise<HealthCheck> {
     'QUIVER_API_KEY',
     'ALPHA_VANTAGE_KEY',
     'FRED_API_KEY',
+    'FMP_API_KEY',
   ];
 
   const missing = required.filter((key) => !process.env[key]);
@@ -483,6 +512,7 @@ export async function GET() {
     checkSupabase(),
     checkFinnhub(),
     checkFRED(),
+    checkFMP(),
     checkAnthropic(),
     checkResend(),
     checkCronRuns(),

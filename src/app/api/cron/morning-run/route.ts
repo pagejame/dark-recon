@@ -19,6 +19,8 @@ import { autoExecutePendingTrades } from '@/lib/services/autonomy';
 import { runFullMarketScan } from '@/lib/services/market-scanner';
 import { runMomentumScreener, saveMomentumResults } from '@/lib/services/momentum-screener';
 import { getSectorRotation } from '@/lib/services/sector-rotation';
+import { getFearGreedIndex, getUpcomingEconomicEvents } from '@/lib/api/market-sentiment';
+import { getRecentInsiderTrades, getUpcomingIPOs } from '@/lib/api/fmp';
 
 export const maxDuration = 120;
 
@@ -231,6 +233,33 @@ export async function GET(request: NextRequest) {
       results.market_scan = 'FAILED';
       console.error('Market scan error:', e);
     });
+
+  await Promise.all([
+    getFearGreedIndex()
+      .then((fg) => {
+        if (fg) results.fear_greed = `${fg.label} (${fg.value}/100) — ${fg.trading_signal}`;
+      })
+      .catch(() => {}),
+    getUpcomingEconomicEvents()
+      .then((events) => {
+        const today = events.filter((e) => e.is_today);
+        results.economic_calendar =
+          today.length > 0
+            ? `${today.length} HIGH IMPACT events today: ${today.map((e) => e.event).join(', ')}`
+            : 'No high-impact events today';
+      })
+      .catch(() => {}),
+    getRecentInsiderTrades(10)
+      .then((trades) => {
+        results.insider_trades = `${trades.filter((t) => t.signal_strength === 'high').length} large insider purchases`;
+      })
+      .catch(() => {}),
+    getUpcomingIPOs()
+      .then((ipos) => {
+        results.ipos = `${ipos.length} upcoming IPOs`;
+      })
+      .catch(() => {}),
+  ]);
 
   try {
     const supabase = createAdminClient();
