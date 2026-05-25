@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getMarketSymbols } from './market-symbols';
+import { runMomentumScreener, saveMomentumResults, type MomentumStock } from './momentum-screener';
+import { getSectorRotation, type SectorRotation } from './sector-rotation';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
@@ -307,10 +309,20 @@ export async function runFullMarketScan(): Promise<{
   scan_types: Record<string, number>;
   top_opportunities: ScannerResult[];
   auto_added: string[];
+  sector_rotation: SectorRotation;
+  momentum_leaders: MomentumStock[];
 }> {
   const supabase = createAdminClient();
 
   const allSymbols = await getMarketSymbols({ sp500Only: true });
+  const emptySector = await getSectorRotation().catch(() => ({
+    leading_sectors: [],
+    lagging_sectors: [],
+    rotation_signal: 'Sector data unavailable',
+    market_regime: 'neutral' as const,
+    updated_at: new Date().toISOString(),
+  }));
+
   if (allSymbols.length === 0) {
     return {
       signals: [],
@@ -318,17 +330,40 @@ export async function runFullMarketScan(): Promise<{
       scan_types: {},
       top_opportunities: [],
       auto_added: [],
+      sector_rotation: emptySector,
+      momentum_leaders: [],
     };
   }
 
-  const [gapSignals, socialSignals, secSignals, earningsSignals, volumeSignals] =
-    await Promise.all([
-      scanPreMarketGaps(allSymbols),
-      scanSocialTrending(),
-      scanSECFilings(),
-      scanEarningsSurprises(),
-      scanUnusualVolume(allSymbols),
-    ]);
+  const [
+    gapSignals,
+    socialSignals,
+    secSignals,
+    earningsSignals,
+    volumeSignals,
+    momentumData,
+    sectorData,
+  ] = await Promise.all([
+    scanPreMarketGaps(allSymbols),
+    scanSocialTrending(),
+    scanSECFilings(),
+    scanEarningsSurprises(),
+    scanUnusualVolume(allSymbols),
+    runMomentumScreener(),
+    getSectorRotation(),
+  ]);
+
+  momentumData.top_gainers.slice(0, 10).forEach((stock) => {
+    if (Math.abs(stock.change_1d) >= 2) {
+      gapSignals.push({
+        ticker: stock.ticker,
+        scan_type: 'momentum',
+        signal_strength: stock.relative_strength,
+        signal_data: { change_1d: stock.change_1d, volume_ratio: stock.volume_ratio },
+        raw_reason: stock.reason,
+      });
+    }
+  });
 
   const allSignals = [
     ...gapSignals,
@@ -338,13 +373,17 @@ export async function runFullMarketScan(): Promise<{
     ...volumeSignals,
   ];
 
+  await saveMomentumResults(momentumData).catch(console.error);
+
   if (allSignals.length === 0) {
     return {
       signals: [],
       total_scanned: allSymbols.length,
-      scan_types: {},
+      scan_types: { momentum: momentumData.high_momentum.length },
       top_opportunities: [],
       auto_added: [],
+      sector_rotation: sectorData,
+      momentum_leaders: momentumData.high_momentum.slice(0, 5),
     };
   }
 
@@ -365,6 +404,10 @@ export async function runFullMarketScan(): Promise<{
     .sort(([, a], [, b]) => b.combined_strength - a.combined_strength)
     .slice(0, 15);
 
+  const sectorContext = `SECTOR ROTATION: ${sectorData.rotation_signal}
+Market regime: ${sectorData.market_regime.toUpperCase()}
+Leading sectors: ${sectorData.leading_sectors.map((s) => `${s.sector} ${s.change_1d >= 0 ? '+' : ''}${s.change_1d.toFixed(2)}%`).join(', ')}`;
+
   const analysisPrompt = topTickers
     .map(
       ([ticker, data]) =>
@@ -379,6 +422,8 @@ export async function runFullMarketScan(): Promise<{
       {
         role: 'user',
         content: `You are Dark Recon's Market Intelligence Agent. Analyze these market-wide scanner findings from today and score each opportunity.
+
+${sectorContext}
 
 SCANNER FINDINGS (${allSymbols.length} stocks scanned):
 ${analysisPrompt}
@@ -501,5 +546,7 @@ Be selective — only include tickers with genuine actionable signals. Skip nois
     scan_types,
     top_opportunities,
     auto_added: autoAdded,
+    sector_rotation: sectorData,
+    momentum_leaders: momentumData.high_momentum.slice(0, 5),
   };
 }

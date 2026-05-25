@@ -250,6 +250,42 @@ ${highStrength
     }
 
     try {
+      const { getSectorRotation } = await import('@/lib/services/sector-rotation');
+      const rotation = await getSectorRotation();
+
+      sections.push(`SECTOR ROTATION (live):
+${rotation.rotation_signal}
+Leading: ${rotation.leading_sectors.map((s) => `${s.sector} ${s.change_1d >= 0 ? '+' : ''}${s.change_1d.toFixed(2)}%`).join(' | ')}
+Lagging: ${rotation.lagging_sectors.map((s) => `${s.sector} ${s.change_1d.toFixed(2)}%`).join(' | ')}`);
+
+      freshData.sector_rotation = rotation;
+    } catch {
+      /* skip */
+    }
+
+    try {
+      const { data: momentumResults } = await supabase
+        .from('scanner_results')
+        .select('ticker, conviction_score, claude_thesis, signal_data')
+        .eq('scan_type', 'momentum')
+        .eq('scan_date', new Date().toISOString().split('T')[0])
+        .gte('conviction_score', 7)
+        .order('signal_strength', { ascending: false })
+        .limit(5);
+
+      if ((momentumResults || []).length > 0) {
+        sections.push(`MOMENTUM LEADERS (outperforming market today):
+${(momentumResults || [])
+  .map(
+    (r: { ticker: string; claude_thesis: string }) => `  ${r.ticker}: ${r.claude_thesis}`
+  )
+  .join('\n')}`);
+      }
+    } catch {
+      /* skip */
+    }
+
+    try {
       const { data: scanResults } = await supabase
         .from('scanner_results')
         .select('ticker, scan_type, conviction_score, claude_thesis, added_to_watchlist')
@@ -463,6 +499,11 @@ Min conviction to trade: ${autonomy.min_conviction}/10 | Max position: ${autonom
 
   const tierNote = `INTELLIGENCE REFRESH TIER: ${tier} (${tier === 1 ? 'live data only' : tier === 2 ? 'full sweep ran' : 'deep analysis ran'})`;
 
+  const sectorInstruction = `
+When making trade decisions, prioritize stocks in LEADING sectors and avoid stocks in LAGGING sectors.
+If market regime is RISK_OFF, favor defensive positions and tighter stops.
+If market regime is RISK_ON, favor growth/momentum names with higher conviction.`;
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2000,
@@ -473,6 +514,7 @@ Min conviction to trade: ${autonomy.min_conviction}/10 | Max position: ${autonom
 
 ${tierNote}
 ${autonomyInstruction}
+${sectorInstruction}
 
 FRESH PLATFORM STATUS (just gathered):
 ${status}

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import type { SectorRotation } from '@/lib/services/sector-rotation';
+import type { MomentumStock } from '@/lib/services/momentum-screener';
 
 interface ScannerResult {
   ticker: string;
@@ -20,6 +22,8 @@ interface ScanResponse {
   scan_types: Record<string, number>;
   top_opportunities: ScannerResult[];
   auto_added: string[];
+  sector_rotation?: SectorRotation;
+  momentum_leaders?: MomentumStock[];
   scanned_at?: string;
   cached?: boolean;
 }
@@ -46,6 +50,7 @@ const SCAN_TYPE_LABELS: Record<string, string> = {
   sec_news: 'SEC FILINGS',
   earnings_surprise: 'EARNINGS SURPRISES',
   unusual_volume: 'UNUSUAL VOLUME',
+  momentum: 'MOMENTUM',
   multi_signal: 'MULTI SIGNAL',
 };
 
@@ -119,8 +124,9 @@ export default function MarketScannerPage() {
     setWatchlistTickers((prev) => new Set([...prev, ticker.toUpperCase()]));
   };
 
-  const signals = scanData?.signals || [];
-  const topOpportunities = scanData?.top_opportunities || signals.filter((s) => s.conviction_score >= 7);
+  const signals = useMemo(() => scanData?.signals || [], [scanData?.signals]);
+  const topOpportunities =
+    scanData?.top_opportunities || signals.filter((s) => s.conviction_score >= 7);
   const totalSignalsFound = Object.values(scanData?.scan_types || {}).reduce((a, b) => a + b, 0);
 
   const tableRows = useMemo(() => {
@@ -312,6 +318,207 @@ export default function MarketScannerPage() {
                   {scanTypeLabel(type)} · {count}
                 </span>
               ))}
+            </div>
+          )}
+
+          {scanData?.sector_rotation && (
+            <div
+              style={{
+                background: '#111620',
+                border: '1px solid #1e2a3a',
+                borderLeft: `3px solid ${
+                  scanData.sector_rotation.market_regime === 'risk_on'
+                    ? '#00ff88'
+                    : scanData.sector_rotation.market_regime === 'risk_off'
+                      ? '#ff3d5a'
+                      : '#ffd700'
+                }`,
+                borderRadius: 10,
+                padding: 20,
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 12,
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    letterSpacing: 3,
+                    color: '#7a8fa8',
+                  }}
+                >
+                  SECTOR ROTATION
+                </div>
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    letterSpacing: 2,
+                    fontWeight: 700,
+                    padding: '3px 10px',
+                    borderRadius: 20,
+                    background:
+                      scanData.sector_rotation.market_regime === 'risk_on'
+                        ? '#00ff8815'
+                        : '#ff3d5a15',
+                    color:
+                      scanData.sector_rotation.market_regime === 'risk_on'
+                        ? '#00ff88'
+                        : scanData.sector_rotation.market_regime === 'risk_off'
+                          ? '#ff3d5a'
+                          : '#ffd700',
+                    border: `1px solid ${
+                      scanData.sector_rotation.market_regime === 'risk_on'
+                        ? '#00ff8840'
+                        : '#ff3d5a40'
+                    }`,
+                  }}
+                >
+                  {scanData.sector_rotation.market_regime.replace('_', ' ').toUpperCase()}
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: '#7a8fa8',
+                  marginBottom: 14,
+                  lineHeight: 1.6,
+                }}
+              >
+                {scanData.sector_rotation.rotation_signal}
+              </div>
+              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      color: '#00ff88',
+                      letterSpacing: 2,
+                      marginBottom: 6,
+                    }}
+                  >
+                    LEADING ↑
+                  </div>
+                  {scanData.sector_rotation.leading_sectors.map((s) => (
+                    <div
+                      key={s.sector}
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: '#00ff88',
+                        marginBottom: 2,
+                      }}
+                    >
+                      {s.sector} {s.etf} +{s.change_1d.toFixed(2)}%
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      color: '#ff3d5a',
+                      letterSpacing: 2,
+                      marginBottom: 6,
+                    }}
+                  >
+                    LAGGING ↓
+                  </div>
+                  {scanData.sector_rotation.lagging_sectors.map((s) => (
+                    <div
+                      key={s.sector}
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: '#ff3d5a',
+                        marginBottom: 2,
+                      }}
+                    >
+                      {s.sector} {s.etf} {s.change_1d.toFixed(2)}%
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {scanData?.momentum_leaders && scanData.momentum_leaders.length > 0 && (
+            <div
+              style={{
+                background: '#111620',
+                border: '1px solid #1e2a3a',
+                borderRadius: 10,
+                padding: 20,
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  letterSpacing: 3,
+                  color: '#7a8fa8',
+                  marginBottom: 14,
+                }}
+              >
+                MOMENTUM LEADERS — OUTPERFORMING TODAY
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                  gap: 8,
+                }}
+              >
+                {scanData.momentum_leaders.map((stock) => (
+                  <div
+                    key={stock.ticker}
+                    style={{
+                      background: '#0d1117',
+                      border: `1px solid ${stock.change_1d >= 0 ? '#00ff8830' : '#ff3d5a30'}`,
+                      borderRadius: 8,
+                      padding: '10px 12px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: '#ffd700',
+                      }}
+                    >
+                      {stock.ticker}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: stock.change_1d >= 0 ? '#00ff88' : '#ff3d5a',
+                        margin: '4px 0',
+                      }}
+                    >
+                      {stock.change_1d >= 0 ? '+' : ''}
+                      {stock.change_1d.toFixed(2)}%
+                    </div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068' }}>
+                      {stock.volume_ratio}x vol
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

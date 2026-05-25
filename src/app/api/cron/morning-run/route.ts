@@ -17,6 +17,8 @@ import { calculateSignalWeights } from '@/lib/services/signal-learning';
 import { runWatchlistAutoPop } from '@/lib/services/watchlist-autopop';
 import { autoExecutePendingTrades } from '@/lib/services/autonomy';
 import { runFullMarketScan } from '@/lib/services/market-scanner';
+import { runMomentumScreener, saveMomentumResults } from '@/lib/services/momentum-screener';
+import { getSectorRotation } from '@/lib/services/sector-rotation';
 
 export const maxDuration = 120;
 
@@ -199,6 +201,24 @@ export async function GET(request: NextRequest) {
     results.watchlist_autopop = 'FAILED';
     console.error('Watchlist autopop failed');
   }
+
+  void Promise.all([
+    runMomentumScreener()
+      .then((data) => saveMomentumResults(data))
+      .then(() => {
+        results.momentum_scan = 'SUCCESS';
+      })
+      .catch(() => {
+        results.momentum_scan = 'FAILED';
+      }),
+    getSectorRotation()
+      .then((rotation) => {
+        results.sector_rotation = `${rotation.market_regime.toUpperCase()} — ${rotation.rotation_signal.slice(0, 100)}`;
+      })
+      .catch(() => {
+        results.sector_rotation = 'FAILED';
+      }),
+  ]);
 
   runFullMarketScan()
     .then((scanResult) => {
