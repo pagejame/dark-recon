@@ -42,6 +42,17 @@ function getBaseUrl(): string {
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
+const TIER2_API_TIMEOUT_MS = 3000;
+
+function withTier2Timeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout`)), TIER2_API_TIMEOUT_MS)
+    ),
+  ]);
+}
+
 async function getTierLevel(
   supabase: SupabaseAdmin
 ): Promise<{ tier: number; run_count: number }> {
@@ -264,7 +275,10 @@ Executed today: ${executedToday.length}`);
     sections.push(`\n--- TIER 2: FULL INTELLIGENCE PIPELINE ---`);
 
     try {
-      const sweepResult = await runIntelligenceSweep();
+      const sweepResult = await withTier2Timeout(
+        runIntelligenceSweep(),
+        'Intelligence sweep'
+      ).catch(() => [] as Awaited<ReturnType<typeof runIntelligenceSweep>>);
       const highStrength = sweepResult.filter((s) => s.strength === 'high');
       sections.push(`INTELLIGENCE SWEEP: ${sweepResult.length} signals, ${highStrength.length} high strength`);
       freshData.intelligence_signals = highStrength;
@@ -273,7 +287,10 @@ Executed today: ${executedToday.length}`);
     }
 
     try {
-      const confirmedSignals = await runSignalConfirmation();
+      const confirmedSignals = await withTier2Timeout(
+        runSignalConfirmation(),
+        'Signal confirmation'
+      ).catch(() => [] as ConfirmedSignal[]);
       freshData.confirmed_signals = confirmedSignals;
 
       if (confirmedSignals.length > 0) {
@@ -286,7 +303,10 @@ ${confirmedSignals
   )
   .join('\n')}`);
 
-        const theses = await buildThesesForConfirmedSignals(confirmedSignals);
+        const theses = await withTier2Timeout(
+          buildThesesForConfirmedSignals(confirmedSignals),
+          'Thesis builder'
+        ).catch(() => [] as AutoThesis[]);
         freshData.auto_theses = theses;
 
         if (theses.length > 0) {
@@ -309,29 +329,39 @@ ${theses
 
     try {
       const { getSectorRotation } = await import('@/lib/services/sector-rotation');
-      const rotation = await getSectorRotation();
-
-      sections.push(`SECTOR ROTATION (live):
+      const rotation = await withTier2Timeout(getSectorRotation(), 'Sector rotation').catch(
+        () => null
+      );
+      if (rotation) {
+        sections.push(`SECTOR ROTATION (live):
 ${rotation.rotation_signal}
 Leading: ${rotation.leading_sectors.map((s) => `${s.sector} ${s.change_1d >= 0 ? '+' : ''}${s.change_1d.toFixed(2)}%`).join(' | ')}
 Lagging: ${rotation.lagging_sectors.map((s) => `${s.sector} ${s.change_1d.toFixed(2)}%`).join(' | ')}`);
 
-      freshData.sector_rotation = rotation;
+        freshData.sector_rotation = rotation;
+      }
     } catch {
       /* skip */
     }
 
     try {
       const { getMacroSnapshot } = await import('@/lib/api/fred');
-      const macro = await getMacroSnapshot();
-      sections.push(macro.market_backdrop);
-      freshData.macro_regime = macro.macro_regime;
+      const macro = await withTier2Timeout(getMacroSnapshot(), 'FRED macro').catch(() => null);
+      if (macro) {
+        sections.push(macro.market_backdrop);
+        freshData.macro_regime = macro.macro_regime;
+      }
     } catch {
       /* skip */
     }
 
     try {
-      const congressTrades = await getRecentCongressionalTrades(7, 20);
+      const congressTrades = await Promise.race([
+        getRecentCongressionalTrades(7, 20),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Quiver timeout')), TIER2_API_TIMEOUT_MS)
+        ),
+      ]).catch(() => [] as Awaited<ReturnType<typeof getRecentCongressionalTrades>>);
       const recentTrades = congressTrades.slice(0, 5);
 
       if (recentTrades.length > 0) {
@@ -463,8 +493,14 @@ ${staleJobs.map((r) => `  STALE: ${r.job_name} (no recent run)`).join('\n')}`);
     }
   }
 
+  const fullStatus = sections.join('\n\n');
+  const status =
+    fullStatus.length > 6000
+      ? `${fullStatus.slice(0, 6000)}\n\n[STATUS TRUNCATED — remaining data in DB]`
+      : fullStatus;
+
   return {
-    status: sections.join('\n\n'),
+    status,
     tier,
     fresh_data: freshData,
   };
@@ -516,14 +552,20 @@ Min conviction to trade: ${autonomy.min_conviction}/10 | Max position: ${autonom
 
   const tierNote = `INTELLIGENCE REFRESH TIER: ${tier} (${tier === 1 ? 'live data only' : tier === 2 ? 'full sweep ran' : 'deep analysis ran'})`;
 
-  const sectorInstruction = `
+  const sectorInstruction =
+    autonomy.trading_mode === 'day_trading'
+      ? ''
+      : `
 When making trade decisions, prioritize stocks in LEADING sectors and avoid stocks in LAGGING sectors.
 If market regime is RISK_OFF, favor defensive positions and tighter stops.
 If market regime is RISK_ON, favor growth/momentum names with higher conviction.`;
 
-  const macroInstruction = fresh_data.macro_regime
-    ? `\nMACRO REGIME: ${String(fresh_data.macro_regime).toUpperCase()} — adjust all trade sizing and conviction accordingly.`
-    : '';
+  const macroInstruction =
+    autonomy.trading_mode === 'day_trading'
+      ? ''
+      : fresh_data.macro_regime
+        ? `\nMACRO REGIME: ${String(fresh_data.macro_regime).toUpperCase()} — adjust all trade sizing and conviction accordingly.`
+        : '';
 
   const autoTheses = fresh_data.auto_theses as AutoThesis[] | undefined;
   const confirmedSignals = fresh_data.confirmed_signals as ConfirmedSignal[] | undefined;
@@ -538,17 +580,14 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
   const dayTradingInstruction =
     autonomy.trading_mode === 'day_trading'
       ? `
-DAY TRADING MODE ACTIVE:
-- This is an intraday day trading system. Make money TODAY.
-- All positions should be opened AND closed within the same trading day
-- Target +${autonomy.profit_target_pct}% quick scalps, +${autonomy.profit_target_2_pct}% momentum plays, +${autonomy.profit_target_3_pct}% runners
-- Stop losses are tight: -${autonomy.stop_loss_pct}% intraday
-- Short selling is ${autonomy.short_selling_enabled ? 'enabled' : 'disabled'} — profit when stocks go DOWN too
-- Max ${autonomy.daily_trade_limit} trades per day — trade actively
-- Re-entry on same ticker is ${autonomy.same_day_reentry ? 'allowed' : 'not allowed'}
-- Prioritize: High of day breaks, ORB breakouts, VWAP reclaims, gap and go
-- In full autonomy: execute any setup with conviction ≥ ${autonomy.min_conviction} that fits position sizing
-- NEVER hold a losing position hoping for a recovery — cut at -${autonomy.stop_loss_pct}% every time
+DAY TRADING MODE — Decisions must be fast and decisive:
+- Open AND close positions same day
+- Profit targets: +2% partial, +5% full, +10% runner
+- Stop: -1.5% hard cut, no exceptions
+- Short on weakness (setup_type: reversal_short)
+- Conviction ≥ 7 = execute in full autonomy
+- Max 10 concurrent positions, 3% each
+- Prioritize: HOD breaks, ORB, VWAP reclaim, gap continuation
 `
       : '';
 
@@ -605,18 +644,47 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
     .filter((b) => b.type === 'text')
     .map((b) => (b as { text: string }).text)
     .join('');
-  const start = raw.indexOf('[');
-  const end = raw.lastIndexOf(']');
+
+  const cleaned = raw
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/gi, '')
+    .trim();
+
+  const start = cleaned.indexOf('[');
+  const end = cleaned.lastIndexOf(']');
 
   let decisions: AgentDecision[] = [];
-  try {
-    decisions = JSON.parse(raw.slice(start, end + 1));
-  } catch {
+  if (start !== -1 && end !== -1 && end > start) {
+    try {
+      decisions = JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      try {
+        const partial = cleaned.slice(start);
+        const lastBrace = partial.lastIndexOf('},');
+        if (lastBrace > 0) {
+          decisions = JSON.parse(`${partial.slice(0, lastBrace + 1)}]`);
+        } else {
+          throw new Error('No partial JSON recoverable');
+        }
+      } catch {
+        console.error('Agent parse error. Raw response:', raw.slice(0, 500));
+        decisions = [
+          {
+            action: 'SKIP',
+            issue: 'Response parse error',
+            rationale: 'Could not parse agent decisions — check logs for raw response',
+            priority: 'low',
+          },
+        ];
+      }
+    }
+  } else {
+    console.error('No JSON array found in agent response:', raw.slice(0, 500));
     decisions = [
       {
         action: 'SKIP',
-        issue: 'Response parse error',
-        rationale: 'Could not parse agent decisions',
+        issue: 'No decisions found',
+        rationale: 'Agent returned no actionable decisions this cycle',
         priority: 'low',
       },
     ];
