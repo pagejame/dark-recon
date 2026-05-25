@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import type { MacroSnapshot } from '@/lib/api/fred';
+import type { AnalystData } from '@/lib/api/yahoo-finance';
 import type { SectorRotation } from '@/lib/services/sector-rotation';
 import type { MomentumStock } from '@/lib/services/momentum-screener';
 
@@ -24,6 +26,8 @@ interface ScanResponse {
   auto_added: string[];
   sector_rotation?: SectorRotation;
   momentum_leaders?: MomentumStock[];
+  macro_snapshot?: MacroSnapshot;
+  analyst_picks?: AnalystData[];
   scanned_at?: string;
   cached?: boolean;
 }
@@ -318,6 +322,153 @@ export default function MarketScannerPage() {
                   {scanTypeLabel(type)} · {count}
                 </span>
               ))}
+            </div>
+          )}
+
+          {scanData?.macro_snapshot && (
+            <div
+              style={{
+                background: '#111620',
+                border: `1px solid ${
+                  scanData.macro_snapshot.macro_regime === 'expansionary'
+                    ? '#00ff8830'
+                    : scanData.macro_snapshot.macro_regime === 'contractionary'
+                      ? '#ff3d5a30'
+                      : scanData.macro_snapshot.macro_regime === 'stagflation'
+                        ? '#ffd70030'
+                        : '#1e2a3a'
+                }`,
+                borderLeft: `3px solid ${
+                  scanData.macro_snapshot.macro_regime === 'expansionary'
+                    ? '#00ff88'
+                    : scanData.macro_snapshot.macro_regime === 'contractionary'
+                      ? '#ff3d5a'
+                      : scanData.macro_snapshot.macro_regime === 'stagflation'
+                        ? '#ffd700'
+                        : '#7a8fa8'
+                }`,
+                borderRadius: 10,
+                padding: 20,
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 12,
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    letterSpacing: 3,
+                    color: '#7a8fa8',
+                  }}
+                >
+                  MACRO BACKDROP (FRED)
+                </div>
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                    letterSpacing: 2,
+                    fontWeight: 700,
+                    padding: '3px 12px',
+                    borderRadius: 20,
+                    background:
+                      scanData.macro_snapshot.macro_regime === 'expansionary'
+                        ? '#00ff8815'
+                        : '#ff3d5a15',
+                    color:
+                      scanData.macro_snapshot.macro_regime === 'expansionary'
+                        ? '#00ff88'
+                        : scanData.macro_snapshot.macro_regime === 'contractionary'
+                          ? '#ff3d5a'
+                          : '#ffd700',
+                    border: '1px solid currentColor',
+                  }}
+                >
+                  {scanData.macro_snapshot.macro_regime.toUpperCase()}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                  gap: 10,
+                }}
+              >
+                {[
+                  {
+                    label: 'FED FUNDS',
+                    value: `${scanData.macro_snapshot.fed_funds_rate?.value ?? 'N/A'}%`,
+                    trend: scanData.macro_snapshot.fed_funds_rate?.trend,
+                  },
+                  {
+                    label: 'UNEMPLOYMENT',
+                    value: `${scanData.macro_snapshot.unemployment?.value ?? 'N/A'}%`,
+                    trend: scanData.macro_snapshot.unemployment?.trend,
+                  },
+                  {
+                    label: '10Y YIELD',
+                    value: `${scanData.macro_snapshot.treasury_10y?.value ?? 'N/A'}%`,
+                    trend: scanData.macro_snapshot.treasury_10y?.trend,
+                  },
+                  {
+                    label: 'YIELD CURVE',
+                    value: `${scanData.macro_snapshot.yield_curve?.toFixed(2) ?? 'N/A'}%`,
+                    trend:
+                      (scanData.macro_snapshot.yield_curve || 0) > 0 ? 'rising' : 'falling',
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    style={{ background: '#0d1117', borderRadius: 8, padding: '10px 12px' }}
+                  >
+                    <div
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 8,
+                        color: '#3d5068',
+                        letterSpacing: 2,
+                        marginBottom: 4,
+                      }}
+                    >
+                      {item.label}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: '#e8edf5',
+                      }}
+                    >
+                      {item.value}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: 9,
+                        color:
+                          item.trend === 'rising'
+                            ? '#ffd700'
+                            : item.trend === 'falling'
+                              ? '#3d9aff'
+                              : '#3d5068',
+                      }}
+                    >
+                      {item.trend === 'rising' ? '▲' : item.trend === 'falling' ? '▼' : '→'}{' '}
+                      {item.trend}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

@@ -204,6 +204,31 @@ async function checkResend(): Promise<HealthCheck> {
   }
 }
 
+async function checkFRED(): Promise<HealthCheck> {
+  const key = process.env.FRED_API_KEY;
+  if (!key) {
+    return { name: 'FRED Macro API', status: 'fail', message: 'FRED_API_KEY not set' };
+  }
+  try {
+    const res = await fetch(
+      `https://api.stlouisfed.org/fred/series/observations?series_id=FEDFUNDS&api_key=${key}&file_type=json&limit=1`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) {
+      return { name: 'FRED Macro API', status: 'fail', message: `FRED returned ${res.status}` };
+    }
+    const data = await res.json();
+    const rate = data?.observations?.[0]?.value;
+    return {
+      name: 'FRED Macro API',
+      status: 'pass',
+      message: `Connected — Fed Funds Rate: ${rate}%`,
+    };
+  } catch {
+    return { name: 'FRED Macro API', status: 'fail', message: 'Connection failed' };
+  }
+}
+
 async function checkEnvVars(): Promise<HealthCheck> {
   const required = [
     'ALPACA_API_KEY',
@@ -216,6 +241,8 @@ async function checkEnvVars(): Promise<HealthCheck> {
     'RESEND_API_KEY',
     'CRON_SECRET',
     'DARK_RECON_EMAIL',
+    'ALPHA_VANTAGE_KEY',
+    'FRED_API_KEY',
   ];
 
   const missing = required.filter((key) => !process.env[key]);
@@ -373,6 +400,7 @@ export async function GET() {
     checkAlpacaOptions(),
     checkSupabase(),
     checkFinnhub(),
+    checkFRED(),
     checkAnthropic(),
     checkResend(),
     checkCronRuns(),

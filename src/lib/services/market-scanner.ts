@@ -1,4 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { getTechnicalSignalsForTopCandidates } from '@/lib/api/alpha-vantage';
+import { getMacroSnapshot, type MacroSnapshot } from '@/lib/api/fred';
+import { getTopAnalystPicks, type AnalystData } from '@/lib/api/yahoo-finance';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getMarketSymbols } from './market-symbols';
 import { runMomentumScreener, saveMomentumResults, type MomentumStock } from './momentum-screener';
@@ -311,6 +314,8 @@ export async function runFullMarketScan(): Promise<{
   auto_added: string[];
   sector_rotation: SectorRotation;
   momentum_leaders: MomentumStock[];
+  macro_snapshot: MacroSnapshot;
+  analyst_picks: AnalystData[];
 }> {
   const supabase = createAdminClient();
 
@@ -323,6 +328,20 @@ export async function runFullMarketScan(): Promise<{
     updated_at: new Date().toISOString(),
   }));
 
+  const macroFallback = await getMacroSnapshot().catch(() => ({
+    fed_funds_rate: null,
+    inflation_cpi: null,
+    unemployment: null,
+    gdp_growth: null,
+    treasury_10y: null,
+    treasury_2y: null,
+    yield_curve: null,
+    yield_curve_signal: 'Unknown',
+    macro_regime: 'neutral' as const,
+    market_backdrop: 'Macro data unavailable',
+    updated_at: new Date().toISOString(),
+  }));
+
   if (allSymbols.length === 0) {
     return {
       signals: [],
@@ -332,6 +351,8 @@ export async function runFullMarketScan(): Promise<{
       auto_added: [],
       sector_rotation: emptySector,
       momentum_leaders: [],
+      macro_snapshot: macroFallback,
+      analyst_picks: [],
     };
   }
 
@@ -343,6 +364,8 @@ export async function runFullMarketScan(): Promise<{
     volumeSignals,
     momentumData,
     sectorData,
+    macroData,
+    analystPicks,
   ] = await Promise.all([
     scanPreMarketGaps(allSymbols),
     scanSocialTrending(),
@@ -351,7 +374,24 @@ export async function runFullMarketScan(): Promise<{
     scanUnusualVolume(allSymbols),
     runMomentumScreener(),
     getSectorRotation(),
+    getMacroSnapshot(),
+    getTopAnalystPicks(allSymbols.slice(0, 50), 15),
   ]);
+
+  analystPicks.slice(0, 8).forEach((pick) => {
+    gapSignals.push({
+      ticker: pick.ticker,
+      scan_type: 'analyst_target',
+      signal_strength: Math.min(100, pick.upside_pct * 2),
+      signal_data: {
+        upside_pct: pick.upside_pct,
+        target_mean: pick.target_price_mean,
+        recommendation: pick.recommendation,
+        num_analysts: pick.num_analysts,
+      },
+      raw_reason: pick.summary,
+    });
+  });
 
   momentumData.top_gainers.slice(0, 10).forEach((stock) => {
     if (Math.abs(stock.change_1d) >= 2) {
@@ -384,6 +424,8 @@ export async function runFullMarketScan(): Promise<{
       auto_added: [],
       sector_rotation: sectorData,
       momentum_leaders: momentumData.high_momentum.slice(0, 5),
+      macro_snapshot: macroData,
+      analyst_picks: analystPicks.slice(0, 5),
     };
   }
 
@@ -408,6 +450,9 @@ export async function runFullMarketScan(): Promise<{
 Market regime: ${sectorData.market_regime.toUpperCase()}
 Leading sectors: ${sectorData.leading_sectors.map((s) => `${s.sector} ${s.change_1d >= 0 ? '+' : ''}${s.change_1d.toFixed(2)}%`).join(', ')}`;
 
+  const macroContext = `MACRO ENVIRONMENT (FRED):
+${macroData.market_backdrop}`;
+
   const analysisPrompt = topTickers
     .map(
       ([ticker, data]) =>
@@ -422,6 +467,8 @@ Leading sectors: ${sectorData.leading_sectors.map((s) => `${s.sector} ${s.change
       {
         role: 'user',
         content: `You are Dark Recon's Market Intelligence Agent. Analyze these market-wide scanner findings from today and score each opportunity.
+
+${macroContext}
 
 ${sectorContext}
 
@@ -530,6 +577,25 @@ Be selective — only include tickers with genuine actionable signals. Skip nois
     results.push(result);
   }
 
+  const techTickers = claudeAnalysis.slice(0, 8).map((a) => a.ticker).filter(Boolean) as string[];
+  const technicalSignals = await getTechnicalSignalsForTopCandidates(techTickers, 8);
+
+  results.forEach((result) => {
+    const techSignal = technicalSignals.find((t) => t.ticker === result.ticker);
+    if (techSignal) {
+      result.signal_data = {
+        ...result.signal_data,
+        technical_bias: techSignal.technical_bias,
+        rsi: techSignal.rsi,
+        macd_histogram: techSignal.macd_histogram,
+        technical_signals: techSignal.signals,
+      };
+      if (techSignal.technical_bias === 'bullish' && result.conviction_score >= 7) {
+        result.conviction_score = Math.min(10, result.conviction_score + 1);
+      }
+    }
+  });
+
   const scan_types: Record<string, number> = {};
   allSignals.forEach((s) => {
     scan_types[s.scan_type] = (scan_types[s.scan_type] || 0) + 1;
@@ -548,5 +614,7 @@ Be selective — only include tickers with genuine actionable signals. Skip nois
     auto_added: autoAdded,
     sector_rotation: sectorData,
     momentum_leaders: momentumData.high_momentum.slice(0, 5),
+    macro_snapshot: macroData,
+    analyst_picks: analystPicks.slice(0, 5),
   };
 }

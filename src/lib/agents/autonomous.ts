@@ -264,6 +264,15 @@ Lagging: ${rotation.lagging_sectors.map((s) => `${s.sector} ${s.change_1d.toFixe
     }
 
     try {
+      const { getMacroSnapshot } = await import('@/lib/api/fred');
+      const macro = await getMacroSnapshot();
+      sections.push(macro.market_backdrop);
+      freshData.macro_regime = macro.macro_regime;
+    } catch {
+      /* skip */
+    }
+
+    try {
       const { data: momentumResults } = await supabase
         .from('scanner_results')
         .select('ticker, conviction_score, claude_thesis, signal_data')
@@ -504,6 +513,10 @@ When making trade decisions, prioritize stocks in LEADING sectors and avoid stoc
 If market regime is RISK_OFF, favor defensive positions and tighter stops.
 If market regime is RISK_ON, favor growth/momentum names with higher conviction.`;
 
+  const macroInstruction = fresh_data.macro_regime
+    ? `\nMACRO REGIME: ${String(fresh_data.macro_regime).toUpperCase()} — adjust all trade sizing and conviction accordingly.`
+    : '';
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2000,
@@ -514,7 +527,7 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
 
 ${tierNote}
 ${autonomyInstruction}
-${sectorInstruction}
+${sectorInstruction}${macroInstruction}
 
 FRESH PLATFORM STATUS (just gathered):
 ${status}
