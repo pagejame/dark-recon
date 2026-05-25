@@ -101,6 +101,7 @@ interface AutonomyStatus {
   days_remaining: number | null;
   started_at: string | null;
   ends_at: string | null;
+  trading_mode?: 'day_trading' | 'swing_trading';
 }
 
 interface PipelineStatus {
@@ -141,6 +142,7 @@ export default function DashboardContent() {
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
   const [circuitBreakerTriggered, setCircuitBreakerTriggered] = useState(false);
   const [circuitBreakerReason, setCircuitBreakerReason] = useState('');
+  const [tradingMode, setTradingMode] = useState<'day_trading' | 'swing_trading'>('swing_trading');
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -375,6 +377,7 @@ export default function DashboardContent() {
       const res = await fetch('/api/autonomy');
       const data = await res.json();
       setAutonomyConfig(data);
+      if (data.trading_mode) setTradingMode(data.trading_mode);
     } catch {
       setAutonomyConfig(null);
     }
@@ -613,6 +616,20 @@ export default function DashboardContent() {
               }}
             >
               FULL AUTONOMY ACTIVE
+            </span>
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 8,
+                letterSpacing: 2,
+                padding: '3px 10px',
+                borderRadius: 20,
+                background: tradingMode === 'day_trading' ? '#ffd70015' : '#00ff8815',
+                border: `1px solid ${tradingMode === 'day_trading' ? '#ffd70040' : '#00ff8840'}`,
+                color: tradingMode === 'day_trading' ? '#ffd700' : '#00ff88',
+              }}
+            >
+              {tradingMode === 'day_trading' ? '⚡ DAY TRADING' : '📈 SWING MODE'}
             </span>
             <span style={{ fontSize: 13, color: '#7a8fa8' }}>
               Dark Recon is trading itself — all decisions automated

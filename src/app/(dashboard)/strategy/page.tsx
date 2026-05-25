@@ -285,6 +285,7 @@ export default function StrategyPage() {
     daily_trade_limit: number;
     min_conviction: number;
   } | null>(null);
+  const [tradingMode, setTradingMode] = useState<'day_trading' | 'swing_trading'>('swing_trading');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -328,6 +329,12 @@ export default function StrategyPage() {
       .then((r) => r.json())
       .then((data) => setAutonomyConfig(data))
       .catch(() => setAutonomyConfig(null));
+    void fetch('/api/trading-mode')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.current_mode) setTradingMode(data.current_mode);
+      })
+      .catch(() => {});
   }, [fetchData]);
 
   const saveRules = async () => {
@@ -451,6 +458,38 @@ export default function StrategyPage() {
         <div style={{ fontSize: 13, color: '#7a8fa8', marginTop: 4 }}>
           {config?.name || 'Dark Recon Alpha'}
           {config?.description && ` — ${config.description.slice(0, 80)}…`}
+        </div>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            marginTop: 16,
+            padding: '6px 14px',
+            borderRadius: 20,
+            background: tradingMode === 'day_trading' ? '#ffd70015' : '#00ff8815',
+            border: `1px solid ${tradingMode === 'day_trading' ? '#ffd70040' : '#00ff8840'}`,
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: tradingMode === 'day_trading' ? '#ffd700' : '#00ff88',
+            }}
+          />
+          <span
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 10,
+              fontWeight: 700,
+              color: tradingMode === 'day_trading' ? '#ffd700' : '#00ff88',
+              letterSpacing: 1,
+            }}
+          >
+            {tradingMode === 'day_trading' ? 'DAY TRADING MODE' : 'SWING / INVESTING MODE'}
+          </span>
         </div>
       </div>
 

@@ -261,6 +261,8 @@ export default function SettingsPage() {
   const [agentResult, setAgentResult] = useState<AgentRunResult | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
   const [autonomyConfig, setAutonomyConfig] = useState<AutonomyConfig | null>(null);
+  const [tradingMode, setTradingMode] = useState<'day_trading' | 'swing_trading'>('swing_trading');
+  const [modeSwitching, setModeSwitching] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -292,7 +294,30 @@ export default function SettingsPage() {
       .then((r) => r.json())
       .then((data) => setAutonomyConfig(data))
       .catch(() => setAutonomyConfig(null));
+    void fetch('/api/trading-mode')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.current_mode) setTradingMode(data.current_mode);
+      })
+      .catch(() => {});
   }, [fetchSettings]);
+
+  const switchMode = async (newMode: 'day_trading' | 'swing_trading') => {
+    setModeSwitching(true);
+    try {
+      const res = await fetch('/api/trading-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: newMode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTradingMode(newMode);
+      }
+    } finally {
+      setModeSwitching(false);
+    }
+  };
 
   const saveRiskSettings = async () => {
     setSaving('risk');
@@ -674,6 +699,229 @@ export default function SettingsPage() {
             VIEW AGENT LOG →
           </a>
         </div>
+      </div>
+
+      <div
+        style={{
+          background: '#111620',
+          border: '1px solid #1e2a3a',
+          borderRadius: 12,
+          padding: 24,
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: 20,
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 9,
+                letterSpacing: 3,
+                color: tradingMode === 'day_trading' ? '#ffd700' : '#00ff88',
+                marginBottom: 6,
+              }}
+            >
+              ◆ TRADING MODE
+            </div>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: '#e8edf5', margin: 0 }}>
+              {tradingMode === 'day_trading' ? 'Day Trading' : 'Swing / Investing'}
+            </h2>
+            <div style={{ fontSize: 13, color: '#7a8fa8', marginTop: 4 }}>
+              {tradingMode === 'day_trading'
+                ? 'High frequency intraday — requires $25k+ account (PDT rule)'
+                : 'Multi-day positions — works with any account size'}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+          <button
+            type="button"
+            onClick={() => void switchMode('swing_trading')}
+            disabled={modeSwitching || tradingMode === 'swing_trading'}
+            style={{
+              padding: '16px 20px',
+              background: tradingMode === 'swing_trading' ? '#00ff8815' : '#0d1117',
+              border: `2px solid ${tradingMode === 'swing_trading' ? '#00ff88' : '#1e2a3a'}`,
+              borderRadius: 10,
+              cursor: tradingMode === 'swing_trading' ? 'default' : 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              {tradingMode === 'swing_trading' && (
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: '#00ff88',
+                    display: 'inline-block',
+                  }}
+                />
+              )}
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: tradingMode === 'swing_trading' ? '#00ff88' : '#7a8fa8',
+                  letterSpacing: 1,
+                }}
+              >
+                SWING / INVESTING
+              </span>
+            </div>
+            <div style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068', lineHeight: 1.8 }}>
+              10 trades/day · 8% position · Any account size
+              <br />
+              +10/20/30% targets · -7% stop · Holds overnight
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void switchMode('day_trading')}
+            disabled={modeSwitching || tradingMode === 'day_trading'}
+            style={{
+              padding: '16px 20px',
+              background: tradingMode === 'day_trading' ? '#ffd70015' : '#0d1117',
+              border: `2px solid ${tradingMode === 'day_trading' ? '#ffd700' : '#1e2a3a'}`,
+              borderRadius: 10,
+              cursor: tradingMode === 'day_trading' ? 'default' : 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              {tradingMode === 'day_trading' && (
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: '#ffd700',
+                    display: 'inline-block',
+                  }}
+                />
+              )}
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: tradingMode === 'day_trading' ? '#ffd700' : '#7a8fa8',
+                  letterSpacing: 1,
+                }}
+              >
+                DAY TRADING
+              </span>
+            </div>
+            <div style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068', lineHeight: 1.8 }}>
+              100 trades/day · 3% position · Requires $25k+
+              <br />
+              +2/5/10% targets · -1.5% stop · Flat every night
+            </div>
+          </button>
+        </div>
+
+        <div style={{ background: '#0d1117', borderRadius: 8, padding: 16 }}>
+          <div
+            style={{
+              fontFamily: 'monospace',
+              fontSize: 8,
+              letterSpacing: 3,
+              color: '#3d5068',
+              marginBottom: 12,
+            }}
+          >
+            ACTIVE CONFIGURATION
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+              gap: 10,
+            }}
+          >
+            {[
+              { label: 'TRADES/DAY', value: tradingMode === 'day_trading' ? '100' : '10' },
+              { label: 'POSITION SIZE', value: tradingMode === 'day_trading' ? '3%' : '8%' },
+              { label: 'STOP LOSS', value: tradingMode === 'day_trading' ? '-1.5%' : '-7%' },
+              { label: 'TARGET 1', value: tradingMode === 'day_trading' ? '+2%' : '+10%' },
+              { label: 'TARGET 2', value: tradingMode === 'day_trading' ? '+5%' : '+20%' },
+              { label: 'TARGET 3', value: tradingMode === 'day_trading' ? '+10%' : '+30%' },
+              { label: 'OVERNIGHT', value: tradingMode === 'day_trading' ? 'NEVER' : 'YES' },
+              { label: 'SHORTS', value: tradingMode === 'day_trading' ? 'ENABLED' : 'DISABLED' },
+            ].map((item) => (
+              <div key={item.label} style={{ padding: '8px 0', borderBottom: '1px solid #1e2a3a' }}>
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 7,
+                    color: '#3d5068',
+                    letterSpacing: 2,
+                    marginBottom: 3,
+                  }}
+                >
+                  {item.label}
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: '#e8edf5',
+                  }}
+                >
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {tradingMode === 'day_trading' && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '10px 14px',
+              background: '#ffd70010',
+              border: '1px solid #ffd70030',
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#ffd700' }}>
+              ⚠️ PDT RULE: Day trading requires $25,000 minimum account balance. Under $25k you are
+              limited to 3 round-trip trades per 5 business days on a margin account. Switch to
+              Swing / Investing mode to trade with any account size.
+            </div>
+          </div>
+        )}
+
+        {modeSwitching && (
+          <div
+            style={{
+              marginTop: 12,
+              fontFamily: 'monospace',
+              fontSize: 10,
+              color: '#7a8fa8',
+              textAlign: 'center',
+            }}
+          >
+            Switching mode — updating all parameters...
+          </div>
+        )}
       </div>
 
       {loading ? (

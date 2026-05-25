@@ -631,6 +631,25 @@ DAY TRADING MODE — Decisions must be fast and decisive:
 `
       : '';
 
+  const swingTradingInstruction =
+    autonomy.trading_mode === 'swing_trading'
+      ? `
+SWING / INVESTING MODE — Patience and conviction:
+- Hold positions for days to weeks — do not close on small intraday moves
+- Profit targets: +10% partial, +20% full, +30% runner
+- Stop loss: -7% — ignore normal daily volatility
+- Build positions in high-conviction stocks with strong fundamentals + momentum
+- Congressional buys, analyst upgrades, earnings beats = primary signals
+- Max 5 concurrent positions at 8% each
+- No intraday setups — focus on multi-day thesis
+- Only trade conviction ≥ 8 — quality over quantity
+- Short selling disabled — long-only bias
+`
+      : '';
+
+  const modeInstruction =
+    autonomy.trading_mode === 'day_trading' ? dayTradingInstruction : swingTradingInstruction;
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2000,
@@ -641,7 +660,7 @@ DAY TRADING MODE — Decisions must be fast and decisive:
 
 ${tierNote}
 ${autonomyInstruction}
-${sectorInstruction}${macroInstruction}${pipelineInstruction}${dayTradingInstruction}
+${sectorInstruction}${macroInstruction}${pipelineInstruction}${modeInstruction}
 
 FRESH PLATFORM STATUS (just gathered):
 ${status}

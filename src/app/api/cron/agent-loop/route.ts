@@ -93,8 +93,37 @@ export async function GET(request: NextRequest) {
       results.profit_targets = 'ERROR';
     }
 
-    try {
-      const [watchlistResult, scannerResult] = await Promise.all([
+    const tradingMode = config.trading_mode;
+
+    if (tradingMode === 'swing_trading') {
+      const minute = new Date().getMinutes();
+      if (minute % 10 !== 0) {
+        const duration = Date.now() - startTime;
+        try {
+          await supabase.from('cron_runs').insert({
+            job_name: 'agent-loop',
+            status: 'success',
+            results: { ...results, skipped: 'Full agent runs every 10 min in swing mode', minute },
+            duration_ms: duration,
+            ran_at: new Date().toISOString(),
+          });
+        } catch (e) {
+          console.error('Agent loop cron log error:', e);
+        }
+
+        return NextResponse.json({
+          success: true,
+          mode: 'swing_trading',
+          skipped: 'Full agent runs every 10 min in swing mode',
+          minute,
+          ...results,
+        });
+      }
+    }
+
+    if (tradingMode === 'day_trading') {
+      try {
+        const [watchlistResult, scannerResult] = await Promise.all([
         supabase.from('watchlist').select('ticker').limit(20),
         supabase
           .from('scanner_results')
@@ -111,24 +140,27 @@ export async function GET(request: NextRequest) {
       const intradaySignals = await detectIntradaySetups(allTickers);
       results.intraday_setups = `${intradaySignals.length} setups detected`;
 
-      for (const signal of intradaySignals.filter((s) => s.conviction >= 7)) {
-        try {
-          await supabase.from('signals').insert({
-            ticker: signal.ticker,
-            signal_type: signal.setup_type,
-            strength: signal.conviction >= 8 ? 'high' : 'medium',
-            status: 'pending',
-            source: `Intraday: ${signal.setup_type}`,
-            notes: signal.reason,
-            summary: signal.reason,
-            created_at: new Date().toISOString(),
-          });
-        } catch (e) {
-          console.error('Intraday signal insert error:', e);
+        for (const signal of intradaySignals.filter((s) => s.conviction >= 7)) {
+          try {
+            await supabase.from('signals').insert({
+              ticker: signal.ticker,
+              signal_type: signal.setup_type,
+              strength: signal.conviction >= 8 ? 'high' : 'medium',
+              status: 'pending',
+              source: `Intraday: ${signal.setup_type}`,
+              notes: signal.reason,
+              summary: signal.reason,
+              created_at: new Date().toISOString(),
+            });
+          } catch (e) {
+            console.error('Intraday signal insert error:', e);
+          }
         }
+      } catch {
+        results.intraday_setups = 'ERROR';
       }
-    } catch {
-      results.intraday_setups = 'ERROR';
+    } else {
+      results.intraday_setups = 'DISABLED — swing mode';
     }
 
     try {

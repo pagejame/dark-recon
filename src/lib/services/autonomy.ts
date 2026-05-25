@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import { applyTradingMode } from '@/lib/services/trading-mode';
 import {
   submitMarketOrder,
   submitLimitOrder,
@@ -26,6 +27,8 @@ export interface AutonomyConfig {
   short_selling_enabled: boolean;
   same_day_reentry: boolean;
   max_concurrent_positions: number;
+  eod_force_close: boolean;
+  agent_cycle_seconds: number;
 }
 
 interface QueueTradeRow {
@@ -68,6 +71,9 @@ export async function getAutonomyConfig(): Promise<AutonomyConfig> {
   });
 
   const config = settings['full_autonomy_enabled'] || {};
+  const tradingMode =
+    (config.trading_mode as 'day_trading' | 'swing_trading') || 'swing_trading';
+  const isDayTrading = tradingMode === 'day_trading';
   const endsAt = config.ends_at ? new Date(config.ends_at as string) : null;
   const daysRemaining = endsAt
     ? Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
@@ -77,19 +83,25 @@ export async function getAutonomyConfig(): Promise<AutonomyConfig> {
     enabled: config.enabled !== false,
     started_at: (config.started_at as string) || null,
     ends_at: (config.ends_at as string) || null,
-    min_conviction: (settings['autonomy_min_conviction']?.score as number) || 7,
-    max_position_pct: (settings['autonomy_max_position_pct']?.pct as number) || 3,
-    daily_trade_limit: (settings['autonomy_daily_trade_limit']?.limit as number) || 100,
+    min_conviction:
+      (settings['autonomy_min_conviction']?.score as number) || (isDayTrading ? 7 : 8),
+    max_position_pct:
+      (settings['autonomy_max_position_pct']?.pct as number) || (isDayTrading ? 3 : 8),
+    daily_trade_limit:
+      (settings['autonomy_daily_trade_limit']?.limit as number) || (isDayTrading ? 100 : 10),
     days_remaining: daysRemaining,
-    trading_mode: (config.trading_mode as 'day_trading' | 'swing_trading') || 'day_trading',
-    profit_target_pct: (config.profit_target_pct as number) || 2,
-    profit_target_2_pct: (config.profit_target_2_pct as number) || 5,
-    profit_target_3_pct: (config.profit_target_3_pct as number) || 10,
-    stop_loss_pct: (config.stop_loss_pct as number) || 1.5,
-    trailing_stop_pct: (config.trailing_stop_pct as number) || 1,
-    short_selling_enabled: config.short_selling_enabled !== false,
-    same_day_reentry: config.same_day_reentry !== false,
-    max_concurrent_positions: (config.max_concurrent_positions as number) || 10,
+    trading_mode: tradingMode,
+    profit_target_pct: (config.profit_target_pct as number) || (isDayTrading ? 2 : 10),
+    profit_target_2_pct: (config.profit_target_2_pct as number) || (isDayTrading ? 5 : 20),
+    profit_target_3_pct: (config.profit_target_3_pct as number) || (isDayTrading ? 10 : 30),
+    stop_loss_pct: (config.stop_loss_pct as number) || (isDayTrading ? 1.5 : 7),
+    trailing_stop_pct: (config.trailing_stop_pct as number) || (isDayTrading ? 1 : 3),
+    short_selling_enabled: isDayTrading ? config.short_selling_enabled !== false : false,
+    same_day_reentry: isDayTrading ? config.same_day_reentry !== false : false,
+    max_concurrent_positions:
+      (config.max_concurrent_positions as number) || (isDayTrading ? 10 : 5),
+    eod_force_close: config.eod_force_close !== false && isDayTrading,
+    agent_cycle_seconds: isDayTrading ? 60 : 600,
   };
 }
 
@@ -114,6 +126,7 @@ export async function enableFullAutonomy(days = 30): Promise<void> {
         short_selling_enabled: true,
         same_day_reentry: true,
         max_concurrent_positions: 10,
+        eod_force_close: true,
       },
       updated_at: new Date().toISOString(),
     },
@@ -146,6 +159,10 @@ export async function enableFullAutonomy(days = 30): Promise<void> {
     },
     { onConflict: 'key' }
   );
+}
+
+export async function enableSwingTrading(): Promise<void> {
+  await applyTradingMode('swing_trading');
 }
 
 export async function disableFullAutonomy(): Promise<void> {

@@ -16,6 +16,24 @@ export async function GET(request: NextRequest) {
   const supabase = createAdminClient();
 
   try {
+    const { data: modeData } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'full_autonomy_enabled')
+      .maybeSingle();
+
+    const eodEnabled =
+      modeData?.value?.eod_force_close !== false &&
+      modeData?.value?.trading_mode === 'day_trading';
+
+    if (!eodEnabled) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: 'EOD force-close disabled in swing/investing mode — positions held overnight',
+      });
+    }
+
     const posRes = await fetch(`${ALPACA_BASE}/v2/positions`, {
       headers: {
         'APCA-API-KEY-ID': ALPACA_KEY,
