@@ -207,15 +207,26 @@ async function checkResend(): Promise<HealthCheck> {
 async function checkFRED(): Promise<HealthCheck> {
   const key = process.env.FRED_API_KEY;
   if (!key) {
-    return { name: 'FRED Macro API', status: 'fail', message: 'FRED_API_KEY not set' };
+    return {
+      name: 'FRED Macro API',
+      status: 'warn',
+      message: 'FRED_API_KEY not set in environment',
+    };
   }
   try {
+    const start = Date.now();
     const res = await fetch(
-      `https://api.stlouisfed.org/fred/series/observations?series_id=FEDFUNDS&api_key=${key}&file_type=json&limit=1`,
-      { signal: AbortSignal.timeout(5000) }
+      `https://api.stlouisfed.org/fred/series/observations?series_id=FEDFUNDS&api_key=${key}&file_type=json&sort_order=desc&limit=1`,
+      { signal: AbortSignal.timeout(6000) }
     );
+    const latency = Date.now() - start;
     if (!res.ok) {
-      return { name: 'FRED Macro API', status: 'fail', message: `FRED returned ${res.status}` };
+      return {
+        name: 'FRED Macro API',
+        status: 'warn',
+        message: `FRED returned ${res.status}`,
+        latency_ms: latency,
+      };
     }
     const data = await res.json();
     const rate = data?.observations?.[0]?.value;
@@ -223,9 +234,14 @@ async function checkFRED(): Promise<HealthCheck> {
       name: 'FRED Macro API',
       status: 'pass',
       message: `Connected — Fed Funds Rate: ${rate}%`,
+      latency_ms: latency,
     };
   } catch {
-    return { name: 'FRED Macro API', status: 'fail', message: 'Connection failed' };
+    return {
+      name: 'FRED Macro API',
+      status: 'warn',
+      message: 'Connection timeout — non-critical',
+    };
   }
 }
 
@@ -236,11 +252,11 @@ async function checkEnvVars(): Promise<HealthCheck> {
     'NEXT_PUBLIC_SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY',
     'FINNHUB_API_KEY',
-    'QUIVER_API_KEY',
     'ANTHROPIC_API_KEY',
     'RESEND_API_KEY',
     'CRON_SECRET',
     'DARK_RECON_EMAIL',
+    'QUIVER_API_KEY',
     'ALPHA_VANTAGE_KEY',
     'FRED_API_KEY',
   ];
@@ -271,11 +287,13 @@ interface CronRunRow {
 async function checkCronRuns(): Promise<HealthCheck> {
   try {
     const supabase = createAdminClient();
+    const criticalJobs = ['morning-run', 'autonomous-agent', 'market-scan'];
+
     const { data } = await supabase
       .from('cron_runs')
       .select('*')
       .order('ran_at', { ascending: false })
-      .limit(5);
+      .limit(50);
 
     if (!data || data.length === 0) {
       return {
@@ -286,11 +304,31 @@ async function checkCronRuns(): Promise<HealthCheck> {
     }
 
     const runs = data as CronRunRow[];
+    const jobMap: Record<string, CronRunRow> = {};
+    for (const run of runs) {
+      if (!jobMap[run.job_name]) {
+        jobMap[run.job_name] = run;
+      }
+    }
+
+    const staleJobs = Object.values(jobMap).filter((r) => {
+      const hoursAgo = (Date.now() - new Date(r.ran_at).getTime()) / (1000 * 60 * 60);
+      return criticalJobs.includes(r.job_name) && hoursAgo > 25;
+    });
+
     const lastRun = runs[0];
     const hoursAgo = Math.floor(
       (Date.now() - new Date(lastRun.ran_at).getTime()) / (1000 * 60 * 60)
     );
     const failedRuns = runs.filter((r) => r.status === 'failed');
+
+    if (staleJobs.length > 0) {
+      return {
+        name: 'Cron Jobs',
+        status: 'warn',
+        message: `Stale jobs (>25h): ${staleJobs.map((r) => r.job_name).join(', ')}`,
+      };
+    }
 
     return {
       name: 'Cron Jobs',

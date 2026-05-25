@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { getMacroSnapshot } from '@/lib/api/fred';
 import { getPreMarketData, type PreMarketData } from '@/lib/api/premarket';
 import { getPositions, getOrders } from '@/lib/api/alpaca';
 
@@ -41,8 +42,9 @@ export async function generateMorningBriefing(): Promise<MorningBriefing> {
   let pendingOrders: AlpacaOrder[] = [];
   let preMarketData: PreMarketData | null = null;
 
-  const [positionsResult, ordersResult] = await Promise.allSettled([
+  const [positionsResult, macroResult, ordersResult] = await Promise.allSettled([
     getPositions(),
+    getMacroSnapshot(),
     getOrders('open', 50),
   ]);
 
@@ -60,6 +62,15 @@ export async function generateMorningBriefing(): Promise<MorningBriefing> {
   if (preMarketResult[0].status === 'fulfilled') {
     preMarketData = preMarketResult[0].value;
   }
+
+  const macroCtx =
+    macroResult.status === 'fulfilled'
+      ? `
+MACRO BACKDROP (Federal Reserve Data):
+Regime: ${macroResult.value.macro_regime.toUpperCase()}
+${macroResult.value.market_backdrop}
+`
+      : 'Macro data unavailable';
 
   const preMarketCtx =
     preMarketData != null
@@ -99,6 +110,8 @@ ${
         role: 'user',
         content: `You are Dark Recon's Morning Briefing Agent. Today is ${today}. Market is currently ${marketStatus}.
 
+${macroCtx}
+
 ${preMarketCtx}
 
 ${limitOrderContext}
@@ -108,6 +121,7 @@ OPEN POSITIONS: ${currentPositionTickers.join(', ') || 'None'}
 Generate a sharp pre-market intelligence briefing incorporating the overnight data above.
 
 Requirements:
+- Include a dedicated MACRO section analyzing the economic backdrop (Fed policy, rates, yield curve, unemployment) and what it means for today's trading posture
 - Include a dedicated pre-market assessment paragraph analyzing overnight bias (${preMarketData?.futures.bias || 'unknown'}) and what it means for today's session
 - Reference any position-specific news that could affect today's trades on open positions
 - For each pending limit order, assess whether the price is likely to fill at open based on overnight movement and pre-market sentiment. Include these assessments in limit_order_assessments array.
@@ -119,7 +133,7 @@ Respond with a single JSON object only. No text before or after. No markdown. No
   "date": "${today}",
   "market_status": "${marketStatus}",
   "sentiment": "risk_on",
-  "briefing_text": "DARK RECON — ${today}\\n\\n[Paragraph 1: Pre-market assessment — overnight futures bias, SPY/QQQ movement, risk-on or risk-off read for the open]\\n\\n[Paragraph 2: Overall market condition and what it means for today — 3-4 sentences, specific and direct]\\n\\n[Paragraph 3: Top 2-3 opportunities with specific tickers and setups — be actionable]\\n\\n[Paragraph 4: Key risks and levels to watch — what invalidates the thesis]\\n\\n[Paragraph 5: Limit order fill outlook — which pending orders likely fill at open and why]\\n\\n[Paragraph 6: One clear tactical recommendation for the session]",
+  "briefing_text": "DARK RECON — ${today}\\n\\n[Paragraph 1: MACRO — economic regime, Fed backdrop, rates/yield curve read, sector implications for today]\\n\\n[Paragraph 2: Pre-market assessment — overnight futures bias, SPY/QQQ movement, risk-on or risk-off read for the open]\\n\\n[Paragraph 3: Overall market condition and what it means for today — 3-4 sentences, specific and direct]\\n\\n[Paragraph 4: Top 2-3 opportunities with specific tickers and setups — be actionable]\\n\\n[Paragraph 5: Key risks and levels to watch — what invalidates the thesis]\\n\\n[Paragraph 6: Limit order fill outlook — which pending orders likely fill at open and why]\\n\\n[Paragraph 7: One clear tactical recommendation for the session]",
   "top_signals": ["NVDA +2.3%", "AMD momentum", "SPY holding 520"],
   "key_levels": [
     { "label": "SPY Support", "value": "520", "note": "Key level to hold" },
