@@ -57,6 +57,10 @@
       "schedule": "* 13-20 * * 1-5"
     },
     {
+      "path": "/api/cron/eod-close",
+      "schedule": "50 19 * * 1-5"
+    },
+    {
       "path": "/api/cron/weekly-audit",
       "schedule": "0 22 * * 0"
     }

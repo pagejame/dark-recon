@@ -10,6 +10,7 @@ import { calculateSignalWeights } from '@/lib/services/signal-learning';
 import { runSignalConfirmation } from '@/lib/services/signal-confirmation';
 import { buildThesesForConfirmedSignals, type AutoThesis } from '@/lib/services/auto-thesis';
 import type { ConfirmedSignal } from '@/lib/services/signal-confirmation';
+import { checkCircuitBreaker } from '@/lib/services/circuit-breaker';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -529,6 +530,33 @@ export async function runAutonomousAgent(): Promise<AgentRunResult> {
     };
   }
 
+  const autonomy = await getAutonomyConfig();
+  const circuitBreaker = await checkCircuitBreaker().catch(() => null);
+
+  if (circuitBreaker?.should_stop_trading) {
+    return {
+      ran_at: new Date().toISOString(),
+      decisions: [
+        {
+          action: 'SKIP',
+          issue: circuitBreaker.reason,
+          rationale: `Circuit breaker active — ${circuitBreaker.reason}`,
+          priority: 'critical',
+        },
+      ],
+      executed: 0,
+      queued: 0,
+      notified: 0,
+      skipped: 1,
+      errors: [],
+      duration_ms: Date.now() - startTime,
+    };
+  }
+
+  const effectiveMinConviction = circuitBreaker
+    ? Math.ceil(autonomy.min_conviction / (circuitBreaker.conviction_modifier || 1))
+    : autonomy.min_conviction;
+
   const { data: recentActions } = await supabase
     .from('audit_log')
     .select('action_taken, event_at')
@@ -541,13 +569,25 @@ export async function runAutonomousAgent(): Promise<AgentRunResult> {
     (recentActions || []).map((a: { action_taken: string }) => a.action_taken).join('\n') ||
     'None in last 30 minutes';
 
-  const { status, tier, fresh_data } = await gatherStatus(supabase);
-  const autonomy = await getAutonomyConfig();
+  const { status: rawStatus, tier, fresh_data } = await gatherStatus(supabase);
+
+  const riskControlsSection = circuitBreaker
+    ? `RISK CONTROLS:
+Daily P&L: ${circuitBreaker.daily_pnl_pct >= 0 ? '+' : ''}${circuitBreaker.daily_pnl_pct.toFixed(2)}% ($${circuitBreaker.daily_pnl_dollar.toFixed(0)})
+VIX: ${circuitBreaker.vix_level.toFixed(1)} — Market: ${circuitBreaker.market_condition.toUpperCase()}
+Trades today: ${circuitBreaker.trade_count_today}/100
+${circuitBreaker.market_condition !== 'normal' ? `⚠️ ELEVATED VOLATILITY: Min conviction raised to ${effectiveMinConviction}/10` : 'Risk controls: Normal'}
+Circuit breaker: ${circuitBreaker.triggered ? `TRIGGERED — ${circuitBreaker.reason}` : 'OFF'}`
+    : '';
+
+  const status = riskControlsSection ? `${riskControlsSection}\n\n${rawStatus}` : rawStatus;
+  fresh_data.circuit_breaker = circuitBreaker;
+  fresh_data.effective_min_conviction = effectiveMinConviction;
 
   const autonomyInstruction = autonomy.enabled
     ? `FULL AUTONOMY MODE ACTIVE${autonomy.days_remaining != null ? ` (${autonomy.days_remaining} days remaining in 30-day trial)` : ''}.
 Execute everything that meets strategy rules. No approval needed.
-Min conviction to trade: ${autonomy.min_conviction}/10 | Max position: ${autonomy.max_position_pct}% | Daily trade limit: ${autonomy.daily_trade_limit}`
+Min conviction to trade: ${effectiveMinConviction}/10 | Max position: ${autonomy.max_position_pct}% | Daily trade limit: ${autonomy.daily_trade_limit}`
     : `APPROVAL MODE: Queue trades for human approval. Auto-execute only maintenance actions.`;
 
   const tierNote = `INTELLIGENCE REFRESH TIER: ${tier} (${tier === 1 ? 'live data only' : tier === 2 ? 'full sweep ran' : 'deep analysis ran'})`;
@@ -572,7 +612,7 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
 
   const pipelineInstruction =
     autoTheses && autoTheses.length > 0
-      ? `\nPIPELINE READY: ${autoTheses.length} trade theses built and confirmed by multiple sources. These have passed the full intelligence pipeline (Scanner → Signal Confirmation → Thesis Builder). In full autonomy mode, execute any with conviction ≥ ${autonomy.min_conviction} that fit portfolio rules.`
+      ? `\nPIPELINE READY: ${autoTheses.length} trade theses built and confirmed by multiple sources. These have passed the full intelligence pipeline (Scanner → Signal Confirmation → Thesis Builder). In full autonomy mode, execute any with conviction ≥ ${effectiveMinConviction} that fit portfolio rules.`
       : confirmedSignals && confirmedSignals.length > 0
         ? `\nCONFIRMED SIGNALS: ${confirmedSignals.length} tickers confirmed by multiple sources. Build theses and evaluate for execution.`
         : '';
@@ -615,7 +655,7 @@ AVAILABLE_ACTIONS:
 
 DECISION RULES:
 - AUTO_EXECUTE: Stop loss creation, alert dismissal, data refreshes, rebalance trims (in full autonomy)
-- AUTO_EXECUTE (full autonomy only): Trade entries with conviction ≥ ${autonomy.min_conviction}, position closes on stop breach
+- AUTO_EXECUTE (full autonomy only): Trade entries with conviction ≥ ${effectiveMinConviction}, position closes on stop breach
 - QUEUE_FOR_APPROVAL (non-autonomy): New trade entries, large position changes
 - NOTIFY: Correlation warnings, approaching stops, cron failures, unusual patterns
 - SKIP: Nothing actionable, already handled recently

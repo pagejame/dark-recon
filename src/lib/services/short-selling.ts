@@ -1,5 +1,6 @@
 import { getAutonomyConfig } from './autonomy';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { isTradingBlocked } from './circuit-breaker';
 
 const ALPACA_BASE = 'https://paper-api.alpaca.markets';
 const ALPACA_KEY = process.env.ALPACA_API_KEY || '';
@@ -28,6 +29,10 @@ export async function executeShortEntry(
     const config = await getAutonomyConfig();
     if (!config.short_selling_enabled) {
       return { success: false, error: 'Short selling disabled' };
+    }
+
+    if (await isTradingBlocked()) {
+      return { success: false, error: 'Circuit breaker active — trading halted' };
     }
 
     const supabase = createAdminClient();

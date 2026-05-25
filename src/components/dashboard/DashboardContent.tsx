@@ -139,6 +139,8 @@ export default function DashboardContent() {
   const [agentStatus, setAgentStatus] = useState<AutonomousAgentRun | null>(null);
   const [autonomyConfig, setAutonomyConfig] = useState<AutonomyStatus | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
+  const [circuitBreakerTriggered, setCircuitBreakerTriggered] = useState(false);
+  const [circuitBreakerReason, setCircuitBreakerReason] = useState('');
 
   const [scanLoading, setScanLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -388,6 +390,26 @@ export default function DashboardContent() {
     }
   }, []);
 
+  const fetchHealthStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/system/health');
+      const data = await res.json();
+      const cbCheck = (data.checks || []).find(
+        (c: { name: string; status: string; message: string }) => c.name === 'Circuit Breaker'
+      );
+      if (cbCheck?.status === 'warn') {
+        setCircuitBreakerTriggered(true);
+        setCircuitBreakerReason(cbCheck.message?.replace(/^TRIGGERED:\s*/, '') || 'Trading halted');
+      } else {
+        setCircuitBreakerTriggered(false);
+        setCircuitBreakerReason('');
+      }
+    } catch {
+      setCircuitBreakerTriggered(false);
+      setCircuitBreakerReason('');
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void Promise.allSettled([
       fetchBriefing(),
@@ -404,6 +426,7 @@ export default function DashboardContent() {
       fetchAgentStatus(),
       fetchAutonomy(),
       fetchPipelineStatus(),
+      fetchHealthStatus(),
     ]);
   }, [
     fetchBriefing,
@@ -420,6 +443,7 @@ export default function DashboardContent() {
     fetchAgentStatus,
     fetchAutonomy,
     fetchPipelineStatus,
+    fetchHealthStatus,
   ]);
 
   useEffect(() => {
@@ -520,6 +544,38 @@ export default function DashboardContent() {
 
   return (
     <div className="flex flex-col gap-4">
+      {circuitBreakerTriggered && (
+        <div
+          style={{
+            background: '#ff3d5a15',
+            border: '1px solid #ff3d5a',
+            borderRadius: 10,
+            padding: '14px 20px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 20 }}>🛑</span>
+          <div>
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#ff3d5a',
+                letterSpacing: 2,
+              }}
+            >
+              CIRCUIT BREAKER ACTIVE
+            </div>
+            <div style={{ fontSize: 13, color: '#e8edf5', marginTop: 2 }}>
+              {circuitBreakerReason}
+            </div>
+          </div>
+        </div>
+      )}
       {autonomyEnabled && (
         <div
           style={{

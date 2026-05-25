@@ -4,6 +4,7 @@ import { checkAndExecuteProfitTargets } from '@/lib/services/profit-targets';
 import { detectIntradaySetups } from '@/lib/services/intraday-signals';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAutonomyConfig } from '@/lib/services/autonomy';
+import { checkCircuitBreaker } from '@/lib/services/circuit-breaker';
 
 export const maxDuration = 55;
 
@@ -44,6 +45,40 @@ export async function GET(request: NextRequest) {
     }
 
     const results: Record<string, unknown> = {};
+
+    let circuitBreaker;
+    try {
+      circuitBreaker = await checkCircuitBreaker();
+      results.circuit_breaker = {
+        status: circuitBreaker.should_stop_trading ? 'TRIGGERED' : 'OK',
+        daily_pnl: `${circuitBreaker.daily_pnl_pct.toFixed(2)}%`,
+        vix: circuitBreaker.vix_level.toFixed(1),
+        market: circuitBreaker.market_condition,
+        trades_today: circuitBreaker.trade_count_today,
+      };
+
+      if (circuitBreaker.should_stop_trading) {
+        try {
+          await supabase.from('cron_runs').insert({
+            job_name: 'agent-loop',
+            status: 'success',
+            results: { ...results, skipped_reason: circuitBreaker.reason },
+            ran_at: new Date().toISOString(),
+          });
+        } catch (e) {
+          console.error('Agent loop cron log error:', e);
+        }
+
+        return NextResponse.json({
+          success: true,
+          circuit_breaker_triggered: true,
+          reason: circuitBreaker.reason,
+          ...results,
+        });
+      }
+    } catch {
+      results.circuit_breaker = 'CHECK_FAILED';
+    }
 
     try {
       const profitResults = await checkAndExecuteProfitTargets();

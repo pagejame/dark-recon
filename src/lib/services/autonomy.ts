@@ -7,6 +7,7 @@ import {
 } from '@/lib/api/alpaca';
 import { createStopLoss } from '@/lib/services/stoploss';
 import { logAuditEvent } from '@/lib/services/audit';
+import { isTradingBlocked } from '@/lib/services/circuit-breaker';
 
 export interface AutonomyConfig {
   enabled: boolean;
@@ -179,6 +180,10 @@ export async function executeQueueTrade(
     return { success: false, error: 'Trade already actioned' };
   }
 
+  if (await isTradingBlocked()) {
+    return { success: false, error: 'Circuit breaker active — trading halted' };
+  }
+
   try {
     let order: { id?: string } | undefined;
 
@@ -293,6 +298,8 @@ export async function autoExecutePendingTrades(options?: {
 }): Promise<string[]> {
   const autonomy = await getAutonomyConfig();
   if (!autonomy.enabled) return [];
+
+  if (await isTradingBlocked()) return [];
 
   const dailyTrades = await getDailyTradeCount();
   const remaining = autonomy.daily_trade_limit - dailyTrades;

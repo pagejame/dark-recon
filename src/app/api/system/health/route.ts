@@ -429,6 +429,50 @@ async function checkAlpacaOrders(): Promise<HealthCheck> {
   }
 }
 
+interface CircuitBreakerSetting {
+  should_stop_trading?: boolean;
+  reason?: string;
+  daily_pnl_pct?: number;
+  vix_level?: number;
+  trade_count_today?: number;
+}
+
+async function checkCircuitBreakerHealth(): Promise<HealthCheck> {
+  try {
+    const supabase = createAdminClient();
+    const { data } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'circuit_breaker_status')
+      .maybeSingle();
+
+    if (!data?.value) {
+      return {
+        name: 'Circuit Breaker',
+        status: 'pass',
+        message: 'Not yet evaluated — will run at market open',
+      };
+    }
+
+    const cb = data.value as CircuitBreakerSetting;
+    if (cb.should_stop_trading) {
+      return {
+        name: 'Circuit Breaker',
+        status: 'warn',
+        message: `TRIGGERED: ${cb.reason}`,
+      };
+    }
+
+    return {
+      name: 'Circuit Breaker',
+      status: 'pass',
+      message: `OK — Daily P&L: ${cb.daily_pnl_pct?.toFixed(2) || '0.00'}% | VIX: ${cb.vix_level?.toFixed(1) || 'N/A'} | Trades: ${cb.trade_count_today || 0}/100`,
+    };
+  } catch {
+    return { name: 'Circuit Breaker', status: 'pass', message: 'Status pending' };
+  }
+}
+
 export async function GET() {
   const checks = await Promise.all([
     checkEnvVars(),
@@ -442,6 +486,7 @@ export async function GET() {
     checkAnthropic(),
     checkResend(),
     checkCronRuns(),
+    checkCircuitBreakerHealth(),
   ]);
 
   const passing = checks.filter((c) => c.status === 'pass').length;
