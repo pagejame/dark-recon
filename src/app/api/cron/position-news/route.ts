@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { scanPositionNews } from '@/lib/services/position-news';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-export const maxDuration = 30;
+export const maxDuration = 55;
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');

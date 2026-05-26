@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runIntelligenceSweep } from '@/lib/agents/intelligence';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-export const maxDuration = 60;
+export const maxDuration = 55;
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');

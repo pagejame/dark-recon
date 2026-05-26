@@ -49,7 +49,7 @@ async function sweepReddit(subreddit: string): Promise<IntelligenceSignal[]> {
           Accept: 'application/json',
           'Accept-Encoding': 'gzip, deflate',
         },
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(3000),
       });
 
       if (!res.ok) continue;
@@ -144,6 +144,7 @@ async function sweepSECFilings(): Promise<IntelligenceSignal[]> {
           'User-Agent': 'DarkRecon research@dark-recon.com',
           Accept: 'application/json',
         },
+        signal: AbortSignal.timeout(3000),
       }
     );
 
@@ -193,6 +194,7 @@ async function sweepFinancialNews(): Promise<IntelligenceSignal[]> {
   try {
     const res = await fetch(`https://finnhub.io/api/v1/news?category=general&minId=0`, {
       headers: { 'X-Finnhub-Token': process.env.FINNHUB_API_KEY || '' },
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return signals;
     const news = (await res.json()) as FinnhubNewsItem[];
@@ -236,41 +238,42 @@ const STRENGTH_ORDER: Record<IntelligenceSignal['strength'], number> = {
 };
 
 export async function runIntelligenceSweep(): Promise<IntelligenceSignal[]> {
-  const [wsbSignals, stocksSignals, investingSignals, secSignals, newsSignals] =
-    await Promise.allSettled([
-      sweepReddit('wallstreetbets'),
-      sweepReddit('stocks'),
-      sweepReddit('investing'),
-      sweepSECFilings(),
-      sweepFinancialNews(),
-    ]);
+  const sweep = async (): Promise<IntelligenceSignal[]> => {
+    const [wsbSignals, stocksSignals, investingSignals, secSignals, newsSignals] =
+      await Promise.allSettled([
+        sweepReddit('wallstreetbets'),
+        sweepReddit('stocks'),
+        sweepReddit('investing'),
+        sweepSECFilings(),
+        sweepFinancialNews(),
+      ]);
 
-  const allSignals = [
-    ...(wsbSignals.status === 'fulfilled' ? wsbSignals.value : []),
-    ...(stocksSignals.status === 'fulfilled' ? stocksSignals.value : []),
-    ...(investingSignals.status === 'fulfilled' ? investingSignals.value : []),
-    ...(secSignals.status === 'fulfilled' ? secSignals.value : []),
-    ...(newsSignals.status === 'fulfilled' ? newsSignals.value : []),
-  ];
+    const allSignals = [
+      ...(wsbSignals.status === 'fulfilled' ? wsbSignals.value : []),
+      ...(stocksSignals.status === 'fulfilled' ? stocksSignals.value : []),
+      ...(investingSignals.status === 'fulfilled' ? investingSignals.value : []),
+      ...(secSignals.status === 'fulfilled' ? secSignals.value : []),
+      ...(newsSignals.status === 'fulfilled' ? newsSignals.value : []),
+    ];
 
-  if (allSignals.length === 0) return [];
+    if (allSignals.length === 0) return [];
 
-  try {
-    const signalContext = allSignals
-      .slice(0, 20)
-      .map(
-        (s, i) =>
-          `${i + 1}. [${s.source}] ${s.headline}${s.ticker ? ` (${s.ticker})` : ''}`
-      )
-      .join('\n');
+    try {
+      const signalContext = allSignals
+        .slice(0, 20)
+        .map(
+          (s, i) =>
+            `${i + 1}. [${s.source}] ${s.headline}${s.ticker ? ` (${s.ticker})` : ''}`
+        )
+        .join('\n');
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      messages: [
-        {
-          role: 'user',
-          content: `You are Dark Recon's Intelligence Sweep Agent. Analyze these signals from across the internet and score each one for trading relevance.
+      const message = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        messages: [
+          {
+            role: 'user',
+            content: `You are Dark Recon's Intelligence Sweep Agent. Analyze these signals from across the internet and score each one for trading relevance.
 
 SIGNALS FOUND:
 ${signalContext}
@@ -294,34 +297,48 @@ Return ONLY a JSON array. No markdown. Start with [ end with ].
 ]
 
 Only include signals that are genuinely actionable. Skip generic news. Focus on signals that could move a stock price in the next 1-5 days.`,
-        },
-      ],
-    });
-
-    const raw = message.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { type: 'text'; text: string }).text)
-      .join('');
-    const start = raw.indexOf('[');
-    const end = raw.lastIndexOf(']');
-
-    if (start !== -1 && end !== -1) {
-      const scored = JSON.parse(raw.slice(start, end + 1)) as ClaudeScore[];
-      scored.forEach((score) => {
-        const signal = allSignals[score.index - 1];
-        if (signal) {
-          signal.sentiment = score.sentiment || signal.sentiment;
-          signal.strength = score.strength || signal.strength;
-          if (score.ticker) signal.ticker = score.ticker;
-          if (score.ai_summary) signal.summary = score.ai_summary;
-        }
+          },
+        ],
       });
-    }
-  } catch (e) {
-    console.error('Claude scoring error:', e);
-  }
 
-  return allSignals.sort(
-    (a, b) => STRENGTH_ORDER[a.strength] - STRENGTH_ORDER[b.strength]
-  );
+      const raw = message.content
+        .filter((b) => b.type === 'text')
+        .map((b) => (b as { type: 'text'; text: string }).text)
+        .join('');
+      const start = raw.indexOf('[');
+      const end = raw.lastIndexOf(']');
+
+      if (start !== -1 && end !== -1) {
+        const scored = JSON.parse(raw.slice(start, end + 1)) as ClaudeScore[];
+        scored.forEach((score) => {
+          const signal = allSignals[score.index - 1];
+          if (signal) {
+            signal.sentiment = score.sentiment || signal.sentiment;
+            signal.strength = score.strength || signal.strength;
+            if (score.ticker) signal.ticker = score.ticker;
+            if (score.ai_summary) signal.summary = score.ai_summary;
+          }
+        });
+      }
+    } catch (e) {
+      console.error('Claude scoring error:', e);
+    }
+
+    return allSignals.sort(
+      (a, b) => STRENGTH_ORDER[a.strength] - STRENGTH_ORDER[b.strength]
+    );
+  };
+
+  return Promise.race([
+    sweep(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Intelligence sweep timeout')), 45000)
+    ),
+  ]).catch((e) => {
+    console.error(
+      'Intelligence sweep timed out:',
+      e instanceof Error ? e.message : e
+    );
+    return [];
+  });
 }

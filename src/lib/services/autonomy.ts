@@ -497,22 +497,28 @@ export async function executeAutonomousTrade(params: {
     );
 
     const supabase = createAdminClient();
-    const stopPrice =
-      side === 'buy'
+    const stopPrice = parseFloat(
+      (side === 'buy'
         ? price * (1 - autonomy.stop_loss_pct / 100)
-        : price * (1 + autonomy.stop_loss_pct / 100);
+        : price * (1 + autonomy.stop_loss_pct / 100)
+      ).toFixed(2)
+    );
 
-    try {
-      await supabase.from('price_alerts').insert({
-        ticker,
-        condition: side === 'buy' ? 'below' : 'above',
-        target_price: parseFloat(stopPrice.toFixed(2)),
-        status: 'active',
-        note: `Auto stop loss — ${autonomy.stop_loss_pct}% from entry`,
-        created_at: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.error('Stop alert insert error:', e);
+    const { error: stopError } = await supabase.from('price_alerts').insert({
+      ticker,
+      condition: side === 'buy' ? 'below' : 'above',
+      target_price: stopPrice,
+      status: 'active',
+      note: `Auto stop loss — ${autonomy.stop_loss_pct}% from entry`,
+      created_at: new Date().toISOString(),
+    });
+
+    if (stopError) {
+      console.error(`[ALPACA] Stop loss insert failed for ${ticker}:`, stopError.message);
+    } else {
+      console.log(
+        `[ALPACA] Stop loss set: ${ticker} @ $${stopPrice} (${side === 'buy' ? '-' : '+'}${autonomy.stop_loss_pct}%)`
+      );
     }
 
     await logAuditEvent({

@@ -2,6 +2,8 @@ import { getPositions } from '@/lib/api/alpaca';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
+const BATCH_SIZE = 3;
+const BATCH_DELAY_MS = 500;
 
 export interface PositionNewsAlert {
   ticker: string;
@@ -69,6 +71,60 @@ function detectSentiment(text: string): {
   return { sentiment: 'neutral', urgency: 'low' };
 }
 
+async function fetchTickerNews(
+  ticker: string,
+  since: number
+): Promise<PositionNewsAlert[]> {
+  const alerts: PositionNewsAlert[] = [];
+
+  try {
+    const fromDate = new Date(since * 1000).toISOString().split('T')[0];
+    const toDate = new Date().toISOString().split('T')[0];
+
+    const res = await fetch(
+      `https://finnhub.io/api/v1/company-news?symbol=${ticker}&from=${fromDate}&to=${toDate}`,
+      {
+        headers: { 'X-Finnhub-Token': FINNHUB_KEY },
+        signal: AbortSignal.timeout(4000),
+      }
+    );
+
+    if (!res.ok) {
+      console.error(`Position news fetch failed for ${ticker}: HTTP ${res.status}`);
+      return alerts;
+    }
+
+    const news = (await res.json()) as FinnhubNewsItem[];
+
+    (Array.isArray(news) ? news : [])
+      .filter((n) => n.datetime >= since)
+      .slice(0, 3)
+      .forEach((n) => {
+        const text = (n.headline || '') + ' ' + (n.summary || '');
+        const { sentiment, urgency } = detectSentiment(text);
+
+        if (sentiment === 'neutral' && urgency === 'low') return;
+
+        alerts.push({
+          ticker,
+          headline: n.headline?.slice(0, 200) || '',
+          summary: n.summary?.slice(0, 300) || '',
+          sentiment,
+          urgency,
+          url: n.url || '',
+          published_at: new Date(n.datetime * 1000).toISOString(),
+        });
+      });
+  } catch (e) {
+    console.error(
+      `Position news fetch failed for ${ticker}:`,
+      e instanceof Error ? e.message : e
+    );
+  }
+
+  return alerts;
+}
+
 export async function scanPositionNews(): Promise<PositionNewsAlert[]> {
   const positions = await getPositions();
   if (!positions || positions.length === 0) return [];
@@ -95,44 +151,17 @@ export async function scanPositionNews(): Promise<PositionNewsAlert[]> {
     ? Math.floor(new Date(lastRun.ran_at).getTime() / 1000)
     : Math.floor((Date.now() - 2 * 60 * 60 * 1000) / 1000);
 
-  await Promise.all(
-    tickers.map(async (ticker) => {
-      try {
-        const fromDate = new Date(since * 1000).toISOString().split('T')[0];
-        const toDate = new Date().toISOString().split('T')[0];
+  for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
+    const batch = tickers.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map((ticker) => fetchTickerNews(ticker, since))
+    );
+    batchResults.forEach((tickerAlerts) => alerts.push(...tickerAlerts));
 
-        const res = await fetch(
-          `https://finnhub.io/api/v1/company-news?symbol=${ticker}&from=${fromDate}&to=${toDate}`,
-          { headers: { 'X-Finnhub-Token': FINNHUB_KEY } }
-        );
-
-        if (!res.ok) return;
-        const news = (await res.json()) as FinnhubNewsItem[];
-
-        (Array.isArray(news) ? news : [])
-          .filter((n) => n.datetime >= since)
-          .slice(0, 3)
-          .forEach((n) => {
-            const text = (n.headline || '') + ' ' + (n.summary || '');
-            const { sentiment, urgency } = detectSentiment(text);
-
-            if (sentiment === 'neutral' && urgency === 'low') return;
-
-            alerts.push({
-              ticker,
-              headline: n.headline?.slice(0, 200) || '',
-              summary: n.summary?.slice(0, 300) || '',
-              sentiment,
-              urgency,
-              url: n.url || '',
-              published_at: new Date(n.datetime * 1000).toISOString(),
-            });
-          });
-      } catch {
-        // skip ticker
-      }
-    })
-  );
+    if (i + BATCH_SIZE < tickers.length) {
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+    }
+  }
 
   for (const alert of alerts.filter((a) => a.urgency === 'high')) {
     try {
