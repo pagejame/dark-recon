@@ -5,6 +5,7 @@ import {
   submitLimitOrder,
   placeOptionsOrder,
   getAccount,
+  getPositions,
 } from '@/lib/api/alpaca';
 import { createStopLoss } from '@/lib/services/stoploss';
 import { logAuditEvent } from '@/lib/services/audit';
@@ -70,7 +71,29 @@ export async function getAutonomyConfig(): Promise<AutonomyConfig> {
     settings[s.key] = s.value;
   });
 
-  const config = settings['full_autonomy_enabled'] || {};
+  const config: Record<string, unknown> = { ...(settings['full_autonomy_enabled'] || {}) };
+
+  if (!config.started_at && !config.ends_at) {
+    const restoredDates = {
+      started_at: '2026-05-24T22:20:12.697Z',
+      ends_at: '2026-06-23T22:20:12.697Z',
+    };
+    try {
+      await supabase.from('settings').upsert(
+        {
+          key: 'full_autonomy_enabled',
+          value: { ...config, ...restoredDates },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'key' }
+      );
+    } catch (e) {
+      console.error('Trial clock restore error:', e);
+    }
+    config.started_at = restoredDates.started_at;
+    config.ends_at = restoredDates.ends_at;
+  }
+
   const tradingMode =
     (config.trading_mode as 'day_trading' | 'swing_trading') || 'swing_trading';
   const isDayTrading = tradingMode === 'day_trading';
@@ -380,4 +403,133 @@ export async function executeQueueTradeByTicker(ticker: string): Promise<boolean
   if (!trade) return false;
   const result = await executeQueueTrade(trade as QueueTradeRow);
   return result.success;
+}
+
+export async function executeAutonomousTrade(params: {
+  ticker: string;
+  side?: 'buy' | 'sell' | 'short';
+  conviction?: number;
+  rationale?: string;
+}): Promise<{
+  success: boolean;
+  orderId?: string;
+  shares?: number;
+  price?: number;
+  error?: string;
+}> {
+  const ticker = params.ticker.toUpperCase();
+  const side = params.side === 'short' ? 'sell' : params.side || 'buy';
+
+  if (await isTradingBlocked()) {
+    return { success: false, error: 'Circuit breaker active — trading halted' };
+  }
+
+  const autonomy = await getAutonomyConfig();
+  if (!autonomy.enabled) {
+    return { success: false, error: 'Autonomy disabled' };
+  }
+
+  const conviction = params.conviction ?? autonomy.min_conviction;
+  if (conviction < autonomy.min_conviction) {
+    return {
+      success: false,
+      error: `Conviction ${conviction} below minimum ${autonomy.min_conviction}`,
+    };
+  }
+
+  if (!autonomy.short_selling_enabled && side === 'sell') {
+    return { success: false, error: 'Short selling disabled in current mode' };
+  }
+
+  const dailyTrades = await getDailyTradeCount();
+  if (dailyTrades >= autonomy.daily_trade_limit) {
+    return { success: false, error: 'Daily trade limit reached' };
+  }
+
+  if (side === 'buy') {
+    try {
+      const positions = await getPositions();
+      if ((positions as { symbol: string }[]).some((p) => p.symbol === ticker)) {
+        return { success: false, error: 'Already have position' };
+      }
+    } catch {
+      /* continue */
+    }
+  }
+
+  const quoteRes = await fetch(
+    `https://finnhub.io/api/v1/quote?symbol=${ticker}`,
+    {
+      headers: { 'X-Finnhub-Token': process.env.FINNHUB_API_KEY || '' },
+      signal: AbortSignal.timeout(4000),
+    }
+  ).catch(() => null);
+
+  if (!quoteRes?.ok) {
+    return { success: false, error: 'Could not get price' };
+  }
+
+  const quote = await quoteRes.json();
+  const price = (quote as { c?: number }).c || 0;
+  if (price === 0) {
+    return { success: false, error: 'Could not get price' };
+  }
+
+  const account = await getAccount();
+  const equity = parseFloat((account as { equity?: string }).equity || '100000');
+  const positionValue = equity * (autonomy.max_position_pct / 100);
+  const shares = Math.floor(positionValue / price);
+
+  if (shares < 1) {
+    return { success: false, error: 'Position too small' };
+  }
+
+  try {
+    const order = await submitMarketOrder({
+      symbol: ticker,
+      qty: shares,
+      side,
+      time_in_force: autonomy.trading_mode === 'day_trading' ? 'day' : 'gtc',
+    });
+
+    const supabase = createAdminClient();
+    const stopPrice =
+      side === 'buy'
+        ? price * (1 - autonomy.stop_loss_pct / 100)
+        : price * (1 + autonomy.stop_loss_pct / 100);
+
+    try {
+      await supabase.from('price_alerts').insert({
+        ticker,
+        condition: side === 'buy' ? 'below' : 'above',
+        target_price: parseFloat(stopPrice.toFixed(2)),
+        status: 'active',
+        note: `Auto stop loss — ${autonomy.stop_loss_pct}% from entry`,
+        created_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('Stop alert insert error:', e);
+    }
+
+    await logAuditEvent({
+      event_type: 'trade_executed',
+      ticker,
+      action_taken: `${side.toUpperCase()}: ${shares} ${ticker} @ ~$${price.toFixed(2)} (conviction ${conviction}/10)`,
+      rationale: params.rationale || '',
+      price_at_action: price,
+      quantity: shares,
+      dollar_amount: shares * price,
+      conviction_score: conviction,
+      portfolio_value_at_action: equity,
+      outcome: 'pending',
+      source: 'system',
+    });
+
+    return { success: true, orderId: order.id, shares, price };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : 'Order failed',
+    };
+  }
 }

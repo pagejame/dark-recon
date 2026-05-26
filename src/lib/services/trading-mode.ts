@@ -62,12 +62,21 @@ export async function applyTradingMode(newMode: TradingMode): Promise<ModeConfig
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 
+  const { data: existing } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'full_autonomy_enabled')
+    .maybeSingle();
+
+  const existingValue = (existing?.value as Record<string, unknown>) || {};
+
   await Promise.all([
     supabase.from('settings').upsert(
       {
         key: 'full_autonomy_enabled',
         value: {
-          enabled: true,
+          ...existingValue,
+          enabled: existingValue.enabled !== false,
           trading_mode: config.trading_mode,
           profit_target_pct: config.profit_target_pct,
           profit_target_2_pct: config.profit_target_2_pct,

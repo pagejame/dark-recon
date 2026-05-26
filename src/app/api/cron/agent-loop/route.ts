@@ -3,7 +3,7 @@ import { runAutonomousAgent } from '@/lib/agents/autonomous';
 import { checkAndExecuteProfitTargets } from '@/lib/services/profit-targets';
 import { detectIntradaySetups } from '@/lib/services/intraday-signals';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAutonomyConfig } from '@/lib/services/autonomy';
+import { getAutonomyConfig, executeAutonomousTrade } from '@/lib/services/autonomy';
 import { checkCircuitBreaker } from '@/lib/services/circuit-breaker';
 
 export const maxDuration = 55;
@@ -163,6 +163,7 @@ export async function GET(request: NextRequest) {
       results.intraday_setups = 'DISABLED — swing mode';
     }
 
+    let agentTrades = 0;
     try {
       const agentResult = await runAutonomousAgent();
       results.agent = {
@@ -172,6 +173,40 @@ export async function GET(request: NextRequest) {
         decisions: agentResult.decisions.length,
         errors: agentResult.errors,
       };
+
+      try {
+        const tradeDecisions = agentResult.decisions.filter(
+          (d) =>
+            d.action === 'AUTO_EXECUTE' &&
+            d.ticker &&
+            (d.issue?.toLowerCase().includes('buy') ||
+              d.issue?.toLowerCase().includes('entry') ||
+              d.issue?.toLowerCase().includes('long'))
+        );
+
+        for (const decision of tradeDecisions.slice(0, 3)) {
+          if (!decision.ticker) continue;
+
+          const execResult = await executeAutonomousTrade({
+            ticker: decision.ticker,
+            side: 'buy',
+            rationale: decision.rationale,
+          });
+
+          if (execResult.success) {
+            agentTrades++;
+            console.log(
+              `EXECUTED: Bought ${execResult.shares} ${decision.ticker} @ $${execResult.price?.toFixed(2)}`
+            );
+          }
+        }
+
+        if (agentTrades > 0) {
+          results.agent_trades = agentTrades;
+        }
+      } catch (e) {
+        console.error('Direct execution error:', e instanceof Error ? e.message : e);
+      }
     } catch {
       results.agent = 'ERROR';
     }
@@ -197,6 +232,7 @@ export async function GET(request: NextRequest) {
           notified: agent?.notified ?? 0,
           decisions: agent?.decisions ?? 0,
           errors: agent?.errors ?? [],
+          agent_trades: results.agent_trades ?? 0,
         },
         duration_ms: duration,
         ran_at: new Date().toISOString(),

@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getPositions, getAccount, getOrders } from '@/lib/api/alpaca';
 import { logAuditEvent } from '@/lib/services/audit';
-import { getAutonomyConfig, executeQueueTradeByTicker } from '@/lib/services/autonomy';
+import { getAutonomyConfig, executeQueueTradeByTicker, executeAutonomousTrade } from '@/lib/services/autonomy';
 import { runIntelligenceSweep } from '@/lib/agents/intelligence';
 import { getRecentCongressionalTrades } from '@/lib/api/smartmoney';
 import { getUnusualOptionsFlow } from '@/lib/api/options-flow';
@@ -763,10 +763,11 @@ AVAILABLE_ACTIONS:
 - Dismiss triggered price alerts: GET /api/alerts/dismiss
 - Check and update alerts: GET /api/alerts/check
 - Cancel all stale open orders: GET /api/alpaca/orders/cancel-all
+- Execute trade entry: POST /api/trade/execute with body { ticker, side: "buy"|"sell", conviction, rationale }
 
 DECISION RULES:
 - AUTO_EXECUTE: Stop loss creation, alert dismissal, data refreshes, rebalance trims (in full autonomy)
-- AUTO_EXECUTE (full autonomy only): Trade entries with conviction ≥ ${effectiveMinConviction}, position closes on stop breach
+- AUTO_EXECUTE (full autonomy only): Trade entries with conviction ≥ ${effectiveMinConviction} — use POST /api/trade/execute with ticker, side, conviction in body (NOT /api/trade/queue or /api/autonomy/execute)
 - QUEUE_FOR_APPROVAL (non-autonomy): New trade entries, large position changes
 - NOTIFY: Correlation warnings, approaching stops, cron failures, unusual patterns
 - SKIP: Nothing actionable, already handled recently
@@ -852,6 +853,32 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
     duration_ms: 0,
   };
 
+  function isMaintenanceEndpoint(endpoint: string): boolean {
+    return (
+      endpoint.includes('alerts') ||
+      endpoint.includes('cancel-all') ||
+      endpoint.includes('scan') ||
+      endpoint.includes('refresh')
+    );
+  }
+
+  function isTradeEntryDecision(decision: AgentDecision): boolean {
+    if (!decision.ticker) return false;
+    const issue = (decision.issue || '').toLowerCase();
+    const endpoint = decision.endpoint || '';
+    if (endpoint && isMaintenanceEndpoint(endpoint)) return false;
+    return (
+      issue.includes('buy') ||
+      issue.includes('entry') ||
+      issue.includes('long') ||
+      issue.includes('open position') ||
+      issue.includes('swing') ||
+      endpoint.includes('trade/execute') ||
+      endpoint.includes('trade/queue') ||
+      endpoint.includes('autonomy/execute')
+    );
+  }
+
   for (const decision of decisions) {
     try {
       const effectiveAction =
@@ -859,7 +886,46 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
           ? 'AUTO_EXECUTE'
           : decision.action;
 
-      if (effectiveAction === 'AUTO_EXECUTE' && decision.endpoint) {
+      if (
+        effectiveAction === 'AUTO_EXECUTE' &&
+        isTradeEntryDecision(decision) &&
+        autonomy.enabled &&
+        decision.ticker
+      ) {
+        const body = decision.body || {};
+        const conviction =
+          typeof body.conviction === 'number' ? body.conviction : autonomy.min_conviction;
+        const side = (body.side as 'buy' | 'sell' | 'short') || 'buy';
+        const execResult = await executeAutonomousTrade({
+          ticker: decision.ticker,
+          side,
+          conviction,
+          rationale: decision.rationale,
+        });
+
+        if (execResult.success) {
+          result.executed++;
+          await logAuditEvent({
+            event_type: 'autopilot_action_taken',
+            ticker: decision.ticker,
+            action_taken: `AUTONOMOUS TRADE [Tier ${tier}]: ${decision.issue}`,
+            rationale: decision.rationale,
+            outcome: 'pending',
+            source: 'system',
+            raw_data: {
+              decision,
+              tier,
+              success: true,
+              order_id: execResult.orderId,
+              shares: execResult.shares,
+              price: execResult.price,
+            },
+          });
+        } else {
+          result.skipped++;
+          result.errors.push(`${decision.issue}: ${execResult.error || 'Trade execution failed'}`);
+        }
+      } else if (effectiveAction === 'AUTO_EXECUTE' && decision.endpoint) {
         const baseUrl = getBaseUrl();
         const res = await fetch(`${baseUrl}${decision.endpoint}`, {
           method: decision.method || 'GET',
