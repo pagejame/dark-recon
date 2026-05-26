@@ -170,6 +170,7 @@ export async function GET(request: NextRequest) {
         queued: agentResult.queued,
         notified: agentResult.notified,
         decisions: agentResult.decisions.length,
+        errors: agentResult.errors,
       };
     } catch {
       results.agent = 'ERROR';
@@ -177,11 +178,26 @@ export async function GET(request: NextRequest) {
 
     const duration = Date.now() - startTime;
 
+    const agent =
+      typeof results.agent === 'object' && results.agent !== null
+        ? (results.agent as Record<string, unknown>)
+        : null;
+
     try {
       await supabase.from('cron_runs').insert({
         job_name: 'agent-loop',
         status: 'success',
-        results,
+        results: {
+          circuit_breaker: results.circuit_breaker,
+          profit_targets: results.profit_targets,
+          profit_target_details: results.profit_target_details,
+          intraday_setups: results.intraday_setups,
+          executed: agent?.executed ?? 0,
+          queued: agent?.queued ?? 0,
+          notified: agent?.notified ?? 0,
+          decisions: agent?.decisions ?? 0,
+          errors: agent?.errors ?? [],
+        },
         duration_ms: duration,
         ran_at: new Date().toISOString(),
       });
