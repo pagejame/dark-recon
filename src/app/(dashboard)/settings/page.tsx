@@ -889,6 +889,60 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
+
+          <div
+            style={{
+              marginTop: 12,
+              padding: '10px 14px',
+              background: '#0d1117',
+              border: '1px solid #1e2a3a',
+              borderRadius: 8,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 2,
+                  color: '#3d5068',
+                  marginBottom: 3,
+                }}
+              >
+                AGENT CYCLE
+              </div>
+              <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#ffd700' }}>
+                Every 30 min — Testing Mode
+              </div>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  color: '#3d5068',
+                  marginTop: 2,
+                }}
+              >
+                Switch to every 60s for live production trading
+              </div>
+            </div>
+            <div
+              style={{
+                padding: '4px 10px',
+                background: '#ffd70015',
+                border: '1px solid #ffd70030',
+                borderRadius: 20,
+                fontFamily: 'monospace',
+                fontSize: 8,
+                color: '#ffd700',
+                letterSpacing: 2,
+              }}
+            >
+              TESTING
+            </div>
+          </div>
         </div>
 
         {tradingMode === 'day_trading' && (

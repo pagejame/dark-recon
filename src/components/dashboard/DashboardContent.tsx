@@ -631,6 +631,21 @@ export default function DashboardContent() {
             >
               {tradingMode === 'day_trading' ? '⚡ DAY TRADING' : '📈 SWING MODE'}
             </span>
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 8,
+                letterSpacing: 2,
+                padding: '3px 10px',
+                borderRadius: 20,
+                background: '#ffd70015',
+                border: '1px solid #ffd70040',
+                color: '#ffd700',
+                marginLeft: 8,
+              }}
+            >
+              🧪 TESTING MODE — Agent every 30min
+            </span>
             <span style={{ fontSize: 13, color: '#7a8fa8' }}>
               Dark Recon is trading itself — all decisions automated
             </span>

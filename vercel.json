@@ -50,11 +50,11 @@
     },
     {
       "path": "/api/cron/agent-loop",
-      "schedule": "* 8-21 * * 1-5"
+      "schedule": "*/30 8-21 * * 1-5"
     },
     {
       "path": "/api/cron/profit-check",
-      "schedule": "* 13-20 * * 1-5"
+      "schedule": "*/5 13-20 * * 1-5"
     },
     {
       "path": "/api/cron/eod-close",
