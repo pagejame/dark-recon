@@ -5,12 +5,12 @@ import { runAutonomousAgent } from '@/lib/agents/autonomous';
 export async function GET(request: NextRequest) {
   try {
     const supabase = createAdminClient();
-    const limit = parseInt(request.nextUrl.searchParams.get('limit') || '20', 10);
+    const limit = parseInt(request.nextUrl.searchParams.get('limit') || '50', 10);
 
     const { data } = await supabase
       .from('cron_runs')
       .select('*')
-      .eq('job_name', 'autonomous-agent')
+      .in('job_name', ['autonomous-agent', 'agent-loop'])
       .order('ran_at', { ascending: false })
       .limit(limit);
 

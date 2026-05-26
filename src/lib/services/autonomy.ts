@@ -492,6 +492,10 @@ export async function executeAutonomousTrade(params: {
       time_in_force: autonomy.trading_mode === 'day_trading' ? 'day' : 'gtc',
     });
 
+    console.log(
+      `[ALPACA] Order placed: ${shares} ${ticker} ${side} @ ~$${price.toFixed(2)} — order ${order.id}`
+    );
+
     const supabase = createAdminClient();
     const stopPrice =
       side === 'buy'

@@ -877,6 +877,8 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
       issue.includes('long') ||
       issue.includes('open position') ||
       issue.includes('swing') ||
+      issue.includes('swing buy') ||
+      issue.includes('reissue') ||
       endpoint.includes('trade/execute') ||
       endpoint.includes('trade/queue') ||
       endpoint.includes('autonomy/execute')
@@ -900,6 +902,11 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
         const conviction =
           typeof body.conviction === 'number' ? body.conviction : autonomy.min_conviction;
         const side = (body.side as 'buy' | 'sell' | 'short') || 'buy';
+
+        console.log(
+          `[AGENT] Attempting trade execution: ${decision.ticker} — ${decision.issue?.slice(0, 50)}`
+        );
+
         const execResult = await executeAutonomousTrade({
           ticker: decision.ticker,
           side,
@@ -908,6 +915,9 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
         });
 
         if (execResult.success) {
+          console.log(
+            `[AGENT] Trade executed: ${decision.ticker} — ${execResult.shares} shares @ $${execResult.price?.toFixed(2)}`
+          );
           result.executed++;
           await logAuditEvent({
             event_type: 'autopilot_action_taken',
@@ -926,8 +936,13 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
             },
           });
         } else {
+          console.error(
+            `[AGENT] Trade failed: ${decision.ticker} — ${execResult.error || 'Trade execution failed'}`
+          );
           result.skipped++;
-          result.errors.push(`${decision.issue}: ${execResult.error || 'Trade execution failed'}`);
+          result.errors.push(
+            `Trade failed for ${decision.ticker}: ${execResult.error || 'Trade execution failed'}`
+          );
         }
       } else if (effectiveAction === 'AUTO_EXECUTE' && decision.endpoint) {
         const baseUrl = getBaseUrl();

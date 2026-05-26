@@ -16,14 +16,21 @@ interface AgentRun {
   status: string;
   ran_at: string;
   duration_ms: number;
+  job_name?: string;
   results: {
-    executed: number;
-    queued: number;
-    notified: number;
-    skipped: number;
-    errors: string[];
-    decisions: Decision[];
+    executed?: number;
+    queued?: number;
+    notified?: number;
+    skipped?: number;
+    errors?: string[];
+    decisions?: Decision[] | number;
     platform_snapshot?: string;
+    agent?: {
+      executed?: number;
+      queued?: number;
+      notified?: number;
+      decisions?: number;
+    };
   };
 }
 
@@ -77,10 +84,19 @@ function RunCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const decisions = run.results?.decisions || [];
-  const executed = run.results?.executed || 0;
-  const queued = run.results?.queued || 0;
-  const notified = run.results?.notified || 0;
+  const decisions = Array.isArray(run.results?.decisions) ? run.results.decisions : [];
+  const executed =
+    typeof run.results?.executed === 'number'
+      ? run.results.executed
+      : parseInt(String(run.results?.executed || run.results?.agent?.executed || '0'), 10) || 0;
+  const queued =
+    typeof run.results?.queued === 'number'
+      ? run.results.queued
+      : parseInt(String(run.results?.queued || run.results?.agent?.queued || '0'), 10) || 0;
+  const notified =
+    typeof run.results?.notified === 'number'
+      ? run.results.notified
+      : parseInt(String(run.results?.notified || run.results?.agent?.notified || '0'), 10) || 0;
   const errors = run.results?.errors || [];
   const timeAgo = Math.floor((Date.now() - new Date(run.ran_at).getTime()) / 60000);
 
@@ -335,6 +351,7 @@ export default function AgentPage() {
   const [running, setRunning] = useState(false);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [liveResult, setLiveResult] = useState<AgentRunResult | null>(null);
+  const [lastRunResult, setLastRunResult] = useState<string | null>(null);
 
   const fetchRuns = async () => {
     try {
@@ -359,20 +376,48 @@ export default function AgentPage() {
   const runAgentNow = async () => {
     setRunning(true);
     setLiveResult(null);
+    setLastRunResult(null);
     try {
-      const res = await fetch('/api/agent/runs', { method: 'POST' });
+      const res = await fetch('/api/agent/run', { method: 'POST' });
       const data = await res.json();
-      setLiveResult(data);
-      const nextRuns = await fetchRuns();
-      if (nextRuns[0]?.id) setExpandedRun(nextRuns[0].id);
+      if (data.success) {
+        setLastRunResult(
+          `✓ Agent ran — ${data.executed} executed, ${data.decisions} decisions`
+        );
+        setLiveResult({
+          executed: data.executed,
+          queued: data.queued,
+          notified: data.notified,
+          skipped: data.skipped ?? 0,
+          decisions: [],
+        });
+        const nextRuns = await fetchRuns();
+        if (nextRuns[0]?.id) setExpandedRun(nextRuns[0].id);
+      } else {
+        setLastRunResult(`Error: ${data.error || 'Unknown error'}`);
+      }
     } catch {
-      setLiveResult({ error: 'Agent run failed', executed: 0, queued: 0, notified: 0, skipped: 0, decisions: [] });
+      setLastRunResult('Failed to run agent');
+      setLiveResult({
+        error: 'Agent run failed',
+        executed: 0,
+        queued: 0,
+        notified: 0,
+        skipped: 0,
+        decisions: [],
+      });
     } finally {
       setRunning(false);
     }
   };
 
-  const totalExecuted = runs.reduce((sum, r) => sum + (r.results?.executed || 0), 0);
+  const totalExecuted = runs.reduce((sum, r) => {
+    const executed = parseInt(
+      String(r.results?.executed ?? r.results?.agent?.executed ?? '0'),
+      10
+    );
+    return sum + (Number.isNaN(executed) ? 0 : executed);
+  }, 0);
   const totalQueued = runs.reduce((sum, r) => sum + (r.results?.queued || 0), 0);
   const lastRun = runs[0];
   const minutesSinceLastRun = lastRun
@@ -418,24 +463,39 @@ export default function AgentPage() {
               Every decision, every action, every rationale — full transparency
             </div>
           </div>
-          <button
-            onClick={() => void runAgentNow()}
-            disabled={running}
-            style={{
-              padding: '10px 24px',
-              background: running ? '#1e2a3a' : '#00ff88',
-              color: running ? '#7a8fa8' : '#080a0f',
-              border: 'none',
-              borderRadius: 8,
-              fontFamily: 'monospace',
-              fontSize: 10,
-              letterSpacing: 2,
-              fontWeight: 700,
-              cursor: running ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {running ? '⟳ RUNNING...' : '⚡ RUN AGENT NOW'}
-          </button>
+          <div>
+            <button
+              onClick={() => void runAgentNow()}
+              disabled={running}
+              style={{
+                padding: '10px 24px',
+                background: running ? '#1e2a3a' : '#00ff88',
+                border: 'none',
+                borderRadius: 8,
+                color: running ? '#7a8fa8' : '#080a0f',
+                fontFamily: 'monospace',
+                fontSize: 10,
+                letterSpacing: 2,
+                fontWeight: 700,
+                cursor: running ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {running ? '⟳ RUNNING...' : '⚡ RUN AGENT NOW'}
+            </button>
+            {lastRunResult && (
+              <div
+                style={{
+                  marginTop: 8,
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  color: lastRunResult.startsWith('✓') ? '#00ff88' : '#ff3d5a',
+                  letterSpacing: 1,
+                }}
+              >
+                {lastRunResult}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
