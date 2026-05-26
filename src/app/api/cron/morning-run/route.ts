@@ -36,6 +36,17 @@ export async function GET(request: NextRequest) {
   console.log('Dark Recon morning run starting...');
 
   try {
+    const supabase = createAdminClient();
+    await supabase
+      .from('signals')
+      .update({ status: 'expired' })
+      .eq('status', 'pending')
+      .lt('created_at', new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString());
+  } catch (e) {
+    console.error('Morning signal cleanup error:', e);
+  }
+
+  try {
     await fetch('https://paper-api.alpaca.markets/v2/orders', {
       method: 'DELETE',
       headers: {

@@ -62,6 +62,34 @@ async function insertConfirmedSignal(
 
 export async function runSignalConfirmation(): Promise<ConfirmedSignal[]> {
   const supabase = createAdminClient();
+
+  try {
+    await supabase
+      .from('signals')
+      .update({ status: 'expired' })
+      .eq('status', 'pending')
+      .lt('created_at', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString());
+  } catch (e) {
+    console.error('Signal expiry cleanup error:', e);
+  }
+
+  try {
+    const { data: oldSignals } = await supabase
+      .from('signals')
+      .select('id')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+
+    if ((oldSignals || []).length > 50) {
+      const toDelete = (oldSignals || [])
+        .slice(0, (oldSignals || []).length - 50)
+        .map((s: { id: string }) => s.id);
+      await supabase.from('signals').delete().in('id', toDelete);
+    }
+  } catch (e) {
+    console.error('Signal cap cleanup error:', e);
+  }
+
   const today = new Date().toISOString().split('T')[0];
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 

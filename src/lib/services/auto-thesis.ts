@@ -67,11 +67,23 @@ export async function buildAutoThesis(
       const thesisData = (existing.thesis_data || {}) as Record<string, string | number>;
       return {
         ticker,
-        thesis: (existing.thesis as string) || (thesisData.thesis as string) || '',
-        catalyst: (existing.catalyst as string) || (thesisData.catalyst as string) || '',
-        risk_note: (existing.risk_note as string) || (thesisData.risk_note as string) || '',
+        thesis:
+          (existing.thesis as string) ||
+          (thesisData.thesis as string) ||
+          '',
+        catalyst:
+          (existing.catalyst as string) ||
+          (thesisData.catalyst as string) ||
+          '',
+        risk_note:
+          (existing.risk_note as string) ||
+          (thesisData.risk_note as string) ||
+          '',
         conviction_score: existing.conviction_score || 7,
-        entry_note: (existing.entry_note as string) || (thesisData.entry_note as string) || '',
+        entry_note:
+          (existing.entry_note as string) ||
+          (thesisData.entry_note as string) ||
+          '',
         signal_summary: signalSummary,
       };
     }
@@ -132,23 +144,19 @@ Return ONLY valid JSON:
       signal_summary: signalSummary,
     };
 
-    try {
-      await supabase.from('theses').insert({
-        ticker,
-        thesis: autoThesis.thesis,
-        catalyst: autoThesis.catalyst,
-        risk_note: autoThesis.risk_note,
-        conviction_score: autoThesis.conviction_score,
-        entry_note: autoThesis.entry_note,
-        signal_sources: sources,
-        auto_generated: true,
-        overall_direction: 'bullish',
-        thesis_data: autoThesis,
-        generated_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.error('Thesis save error:', e);
+    const { error: insertError } = await supabase.from('theses').insert({
+      ticker,
+      thesis: autoThesis.thesis,
+      catalyst: autoThesis.catalyst || null,
+      risk_note: autoThesis.risk_note || null,
+      conviction_score: autoThesis.conviction_score,
+      entry_note: autoThesis.entry_note || null,
+      signal_sources: sources,
+      auto_generated: true,
+      created_at: new Date().toISOString(),
+    });
+    if (insertError) {
+      console.error(`Thesis insert failed for ${ticker}:`, insertError.message);
     }
 
     try {
@@ -162,7 +170,10 @@ Return ONLY valid JSON:
 
     return autoThesis;
   } catch (e) {
-    console.error(`Auto-thesis error for ${ticker}:`, e);
+    console.error(
+      `Auto-thesis failed for ${ticker}:`,
+      e instanceof Error ? e.message : e
+    );
     return null;
   }
 }

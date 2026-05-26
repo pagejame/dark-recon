@@ -80,7 +80,7 @@ export interface AnalystRatingChange {
 }
 
 export async function getRecentAnalystChanges(limit = 20): Promise<AnalystRatingChange[]> {
-  const data = await fetchFMP(`/v3/upgrades-downgrades?limit=${limit}&`);
+  const data = await fetchFMP(`/v3/upgrades-downgrades-consensus?&`);
   if (!Array.isArray(data)) return [];
 
   return data
@@ -110,7 +110,8 @@ export async function getRecentAnalystChanges(limit = 20): Promise<AnalystRating
               : ('neutral' as const),
       };
     })
-    .filter((r: AnalystRatingChange) => r.ticker);
+    .filter((r: AnalystRatingChange) => r.ticker)
+    .slice(0, limit);
 }
 
 export interface PressRelease {
@@ -196,13 +197,20 @@ export interface EarningsSurprise {
 }
 
 export async function getRecentEarningsSurprises(limit = 30): Promise<EarningsSurprise[]> {
-  const data = await fetchFMP(`/v3/earnings-surprises-latest?limit=${limit}&`);
+  const today = new Date().toISOString().split('T')[0];
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const data = await fetchFMP(`/v3/earning_calendar?from=${weekAgo}&to=${today}&`);
   if (!Array.isArray(data)) return [];
 
   return data
+    .filter(
+      (e: Record<string, unknown>) =>
+        e.eps !== null && e.epsEstimated !== null && e.eps !== undefined
+    )
     .map((e: Record<string, unknown>) => {
-      const estimated = (e.estimatedEps as number) || 0;
-      const actual = (e.actualEarningResult as number) || 0;
+      const estimated = (e.epsEstimated as number) || 0;
+      const actual = (e.eps as number) || 0;
       const surprise =
         estimated && estimated !== 0
           ? ((actual - estimated) / Math.abs(estimated)) * 100
@@ -216,5 +224,6 @@ export async function getRecentEarningsSurprises(limit = 30): Promise<EarningsSu
         direction: surprise >= 0 ? ('beat' as const) : ('miss' as const),
       };
     })
-    .filter((e: EarningsSurprise) => e.ticker && Math.abs(e.surprise_pct) >= 5);
+    .filter((e: EarningsSurprise) => e.ticker && Math.abs(e.surprise_pct) >= 5)
+    .slice(0, limit);
 }
