@@ -109,6 +109,18 @@ async function gatherStatus(
     freshData.positions = positions;
     freshData.day_pnl = dayPnL;
 
+    try {
+      const todayStart = `${new Date().toISOString().split('T')[0]}T00:00:00Z`;
+      const { count } = await supabase
+        .from('audit_log')
+        .select('*', { count: 'exact', head: true })
+        .eq('event_type', 'trade_executed')
+        .gte('event_at', todayStart);
+      freshData.trades_today = count || 0;
+    } catch {
+      freshData.trades_today = 0;
+    }
+
     tier1Sections.push(`LIVE PORTFOLIO (Tier 1 — refreshed now):
 Equity: $${equity.toLocaleString()} | Day P&L: ${dayPnL >= 0 ? '+' : ''}$${dayPnL.toFixed(2)} (${dayPnLPct >= 0 ? '+' : ''}${dayPnLPct.toFixed(2)}%)
 Open positions: ${(positions as unknown[]).length}
@@ -148,6 +160,30 @@ ${highConviction
   )
   .join('\n')}`);
       freshData.recent_signals = highConviction;
+    }
+  } catch {
+    /* skip */
+  }
+
+  try {
+    const { data: confirmedToday } = await supabase
+      .from('signals')
+      .select('ticker, signal_type, strength, source, notes')
+      .eq('status', 'pending')
+      .in('strength', ['high', 'medium'])
+      .gte('created_at', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if ((confirmedToday || []).length > 0) {
+      tier1Sections.push(`CONFIRMED SIGNALS — READY TO TRADE:
+${(confirmedToday || [])
+  .map(
+    (s: { ticker: string; strength: string; source: string; notes?: string }) =>
+      `  ${s.ticker} [${s.strength.toUpperCase()}]: ${s.source} — ${s.notes?.slice(0, 80) || ''}`
+  )
+  .join('\n')}`);
+      freshData.confirmed_signals = confirmedToday;
     }
   } catch {
     /* skip */
@@ -694,13 +730,51 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
         : '';
 
   const autoTheses = fresh_data.auto_theses as AutoThesis[] | undefined;
-  const confirmedSignals = fresh_data.confirmed_signals as ConfirmedSignal[] | undefined;
+  const confirmedSignals = fresh_data.confirmed_signals as
+    | ConfirmedSignal[]
+    | Array<{
+        ticker: string;
+        strength?: string;
+        source?: string;
+        notes?: string;
+        confirmation_score?: number;
+        best_reason?: string;
+      }>
+    | undefined;
+
+  const tradesToday = (fresh_data.trades_today as number) || 0;
+  const equity = (fresh_data.equity as number) || 100000;
+  const openPositions = ((fresh_data.positions as unknown[]) || []).length;
+  const tradesRemaining = autonomy.daily_trade_limit - tradesToday;
+
+  const confirmedSignalsList =
+    confirmedSignals && confirmedSignals.length > 0
+      ? confirmedSignals
+          .map((s) => {
+            const signal = s as {
+              ticker: string;
+              strength?: string;
+              source?: string;
+              notes?: string;
+              confirmation_score?: number;
+              best_reason?: string;
+            };
+            const score =
+              signal.confirmation_score ??
+              (signal.strength === 'high' ? 9 : signal.strength === 'medium' ? 7 : 5);
+            const reason = String(
+              signal.best_reason || signal.notes || signal.source || ''
+            ).slice(0, 100);
+            return `  ${signal.ticker} [${score}/10]: ${reason}`;
+          })
+          .join('\n')
+      : 'Check intelligence summary for confirmed signals';
 
   const pipelineInstruction =
     autoTheses && autoTheses.length > 0
       ? `\nPIPELINE READY: ${autoTheses.length} trade theses built and confirmed by multiple sources. These have passed the full intelligence pipeline (Scanner → Signal Confirmation → Thesis Builder). In full autonomy mode, execute any with conviction ≥ ${effectiveMinConviction} that fit portfolio rules.`
       : confirmedSignals && confirmedSignals.length > 0
-        ? `\nCONFIRMED SIGNALS: ${confirmedSignals.length} tickers confirmed by multiple sources. Build theses and evaluate for execution.`
+        ? `\nCONFIRMED SIGNALS: ${confirmedSignals.length} tickers confirmed and READY TO EXECUTE. Return AUTO_EXECUTE buy decisions — do not SKIP.`
         : '';
 
   const dayTradingInstruction =
@@ -720,16 +794,26 @@ DAY TRADING MODE — Decisions must be fast and decisive:
   const swingTradingInstruction =
     autonomy.trading_mode === 'swing_trading'
       ? `
-SWING / INVESTING MODE — Patience and conviction:
-- Hold positions for days to weeks — do not close on small intraday moves
-- Profit targets: +10% partial, +20% full, +30% runner
-- Stop loss: -7% — ignore normal daily volatility
-- Build positions in high-conviction stocks with strong fundamentals + momentum
-- Congressional buys, analyst upgrades, earnings beats = primary signals
-- Max 5 concurrent positions at 8% each
-- No intraday setups — focus on multi-day thesis
-- Only trade conviction ≥ 8 — quality over quantity
-- Short selling disabled — long-only bias
+SWING / INVESTING MODE — Full Autonomy Active:
+- You have ${autonomy.daily_trade_limit} trades/day limit. Used: ${tradesToday}. Remaining: ${tradesRemaining}
+- Open positions: ${openPositions}/5. Max 5 concurrent at 8% each = $${Math.round(equity * 0.08).toLocaleString()} per trade
+- Profit targets: +10% partial, +20% full, +30% runner. Stop: -7%
+
+CRITICAL EXECUTION RULE — READ THIS FIRST:
+If you see confirmed signals (conviction ≥ 8) AND open positions < 5 AND trades remaining > 0:
+YOU MUST RETURN AUTO_EXECUTE BUY decisions. DO NOT return SKIP.
+Confirmed signals in the intelligence summary are READY TO TRADE. They have already been validated.
+"No actionable decisions" is WRONG when confirmed high-conviction signals exist with capacity available.
+
+CONFIRMED SIGNALS ALREADY VALIDATED — EXECUTE THESE:
+${confirmedSignalsList}
+
+DECISION RULES:
+1. If confirmed signal exists + no position in that ticker + trades remaining → AUTO_EXECUTE buy (POST /api/trade/execute with body { ticker, side: "buy", conviction, rationale })
+2. If position at profit target → AUTO_EXECUTE close
+3. If stop loss breach → AUTO_EXECUTE close
+4. If stale order → AUTO_EXECUTE cancel
+5. Only SKIP if there are genuinely zero signals AND portfolio needs no maintenance
 `
       : '';
 
@@ -774,7 +858,7 @@ DECISION RULES:
 - AUTO_EXECUTE (full autonomy only): Trade entries with conviction ≥ ${effectiveMinConviction} — use POST /api/trade/execute with ticker, side, conviction in body (NOT /api/trade/queue or /api/autonomy/execute)
 - QUEUE_FOR_APPROVAL (non-autonomy): New trade entries, large position changes
 - NOTIFY: Correlation warnings, approaching stops, cron failures, unusual patterns
-- SKIP: Nothing actionable, already handled recently
+- SKIP: Nothing actionable and no confirmed signals waiting — NEVER skip when high-conviction confirmed signals exist with open capacity
 
 Return ONLY valid JSON array, max 6 decisions:
 [
