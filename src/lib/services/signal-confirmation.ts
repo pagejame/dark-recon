@@ -27,39 +27,6 @@ export interface ConfirmedSignal {
   should_build_thesis: boolean;
 }
 
-async function insertConfirmedSignal(
-  signal: ConfirmedSignal,
-  existingTickers: Set<string>
-): Promise<void> {
-  if (existingTickers.has(signal.ticker)) return;
-
-  const supabase = createAdminClient();
-  const notes = `${signal.source_count} sources confirmed: ${signal.sources.join(', ')}. ${signal.best_reason}`;
-  const strength =
-    signal.confirmation_score >= 8
-      ? 'high'
-      : signal.confirmation_score >= 5
-        ? 'medium'
-        : 'low';
-
-  try {
-    const { error } = await supabase.from('signals').insert({
-      ticker: signal.ticker,
-      signal_type: signal.signal_types[0] || 'multi_source',
-      strength,
-      status: 'pending',
-      source: signal.sources.join(' + '),
-      notes,
-      summary: notes,
-      created_at: new Date().toISOString(),
-    });
-    if (error) console.error('Signal insert error:', error);
-    else existingTickers.add(signal.ticker);
-  } catch (e) {
-    console.error('Signal insert error:', e);
-  }
-}
-
 export async function runSignalConfirmation(): Promise<ConfirmedSignal[]> {
   const supabase = createAdminClient();
 
@@ -382,8 +349,38 @@ export async function runSignalConfirmation(): Promise<ConfirmedSignal[]> {
     (existingSignals || []).map((s: { ticker: string }) => s.ticker)
   );
 
-  for (const signal of confirmed.slice(0, 10)) {
-    await insertConfirmedSignal(signal, existingTickers);
+  // Rule-based confirmation only — no Claude call (avoids rate limit conflicts with agent loop)
+  const confirmedForAction = confirmed
+    .filter((s) => s.confirmation_score >= 6)
+    .slice(0, 8);
+
+  for (const signal of confirmedForAction) {
+    if (existingTickers.has(signal.ticker)) continue;
+
+    const notes = `${signal.source_count} sources: ${signal.sources.slice(0, 3).join(', ')}. ${signal.best_reason?.slice(0, 200)}`;
+    const strength =
+      signal.confirmation_score >= 8
+        ? 'high'
+        : signal.confirmation_score >= 6
+          ? 'medium'
+          : 'low';
+
+    try {
+      const { error } = await supabase.from('signals').insert({
+        ticker: signal.ticker,
+        signal_type: signal.signal_types[0] || 'multi_source',
+        strength,
+        status: 'pending',
+        source: signal.sources.join(' + '),
+        notes,
+        summary: notes,
+        created_at: new Date().toISOString(),
+      });
+      if (error) console.error('Signal insert error:', error);
+      else existingTickers.add(signal.ticker);
+    } catch (e) {
+      console.error('Signal insert error:', e);
+    }
   }
 
   return confirmed;

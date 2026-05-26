@@ -309,7 +309,7 @@ Executed today: ${executedToday.length}`);
         );
 
         const theses = await withTier2Timeout(
-          buildThesesForConfirmedSignals(confirmedSignals),
+          buildThesesForConfirmedSignals(confirmedSignals.slice(0, 2)),
           'Thesis builder'
         ).catch(() => [] as AutoThesis[]);
         freshData.auto_theses = theses;
@@ -652,6 +652,10 @@ export async function runAutonomousAgent(): Promise<AgentRunResult> {
     'None in last 30 minutes';
 
   const { status: rawStatus, tier, fresh_data } = await gatherStatus(supabase);
+
+  if (tier >= 2) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
 
   const riskControlsSection = circuitBreaker
     ? `RISK CONTROLS:

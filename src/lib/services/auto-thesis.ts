@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
 
+const thesisCallTimes: number[] = [];
+
 async function getFinnhubData(ticker: string): Promise<string> {
   try {
     const fromDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -53,6 +55,17 @@ export async function buildAutoThesis(
   signalSummary: string,
   sources: string[]
 ): Promise<AutoThesis | null> {
+  const now = Date.now();
+  while (thesisCallTimes.length > 0 && thesisCallTimes[0] < now - 60000) {
+    thesisCallTimes.shift();
+  }
+
+  if (thesisCallTimes.length >= 3) {
+    console.log(`Thesis rate limit — skipping ${ticker}`);
+    return null;
+  }
+  thesisCallTimes.push(now);
+
   try {
     const supabase = createAdminClient();
     const today = new Date().toISOString().split('T')[0];
@@ -144,6 +157,10 @@ Return ONLY valid JSON:
       signal_summary: signalSummary,
     };
 
+    const sourcesArray = Array.isArray(sources)
+      ? sources.map((s) => String(s))
+      : [String(sources)];
+
     const { error: insertError } = await supabase.from('theses').insert({
       ticker,
       thesis: autoThesis.thesis,
@@ -151,12 +168,15 @@ Return ONLY valid JSON:
       risk_note: autoThesis.risk_note || null,
       conviction_score: autoThesis.conviction_score,
       entry_note: autoThesis.entry_note || null,
-      signal_sources: sources,
+      signal_sources: sourcesArray,
       auto_generated: true,
       created_at: new Date().toISOString(),
     });
     if (insertError) {
-      console.error(`Thesis insert failed for ${ticker}:`, insertError.message);
+      console.error(
+        `Thesis insert failed for ${ticker}:`,
+        insertError.message || insertError.code || insertError
+      );
     }
 
     try {
@@ -189,7 +209,7 @@ export async function buildThesesForConfirmedSignals(
   const theses: AutoThesis[] = [];
   const toProcess = confirmedSignals
     .filter((s) => s.confirmation_score >= 6)
-    .slice(0, 5);
+    .slice(0, 2);
 
   for (const signal of toProcess) {
     const thesis = await buildAutoThesis(signal.ticker, signal.best_reason, signal.sources);
