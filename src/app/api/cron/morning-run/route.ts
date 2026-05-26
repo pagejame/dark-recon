@@ -35,6 +35,19 @@ export async function GET(request: NextRequest) {
 
   console.log('Dark Recon morning run starting...');
 
+  try {
+    await fetch('https://paper-api.alpaca.markets/v2/orders', {
+      method: 'DELETE',
+      headers: {
+        'APCA-API-KEY-ID': process.env.ALPACA_API_KEY || '',
+        'APCA-API-SECRET-KEY': process.env.ALPACA_API_SECRET || '',
+      },
+    });
+    results.stale_orders_cleared = 'All open orders cancelled at market open';
+  } catch {
+    /* non-fatal */
+  }
+
   const [
     briefingResult,
     scanResult,

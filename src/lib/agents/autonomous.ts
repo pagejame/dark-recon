@@ -86,7 +86,8 @@ async function gatherStatus(
   supabase: SupabaseAdmin
 ): Promise<{ status: string; tier: number; fresh_data: Record<string, unknown> }> {
   const { tier, run_count } = await getTierLevel(supabase);
-  const sections: string[] = [];
+  const tier1Sections: string[] = [];
+  const tier2Sections: string[] = [];
   const freshData: Record<string, unknown> = { tier, run_count };
 
   // TIER 1 — Every run (live data, fast)
@@ -108,7 +109,7 @@ async function gatherStatus(
     freshData.positions = positions;
     freshData.day_pnl = dayPnL;
 
-    sections.push(`LIVE PORTFOLIO (Tier 1 — refreshed now):
+    tier1Sections.push(`LIVE PORTFOLIO (Tier 1 — refreshed now):
 Equity: $${equity.toLocaleString()} | Day P&L: ${dayPnL >= 0 ? '+' : ''}$${dayPnL.toFixed(2)} (${dayPnLPct >= 0 ? '+' : ''}${dayPnLPct.toFixed(2)}%)
 Open positions: ${(positions as unknown[]).length}
 ${(positions as { symbol: string; unrealized_plpc?: string; market_value?: string }[])
@@ -122,7 +123,7 @@ ${(orders as { symbol: string; side: string; qty: string; limit_price?: string }
   .map((o) => `  ${o.symbol}: ${o.side} ${o.qty} @ $${o.limit_price || 'market'}`)
   .join('\n')}`);
   } catch {
-    sections.push('LIVE PORTFOLIO: Fetch failed');
+    tier1Sections.push('LIVE PORTFOLIO: Fetch failed');
   }
 
   try {
@@ -139,7 +140,7 @@ ${(orders as { symbol: string; side: string; qty: string; limit_price?: string }
     );
 
     if (highConviction.length > 0) {
-      sections.push(`RECENT HIGH CONVICTION SIGNALS (last 2h):
+      tier1Sections.push(`RECENT HIGH CONVICTION SIGNALS (last 2h):
 ${highConviction
   .map(
     (s: { ticker: string; signal_type: string; status: string }) =>
@@ -169,7 +170,7 @@ ${highConviction
       .order('created_at', { ascending: false });
 
     if ((intradaySignals || []).length > 0) {
-      sections.push(`LIVE INTRADAY SETUPS (last 5 min):
+      tier1Sections.push(`LIVE INTRADAY SETUPS (last 5 min):
 ${(intradaySignals || [])
   .map(
     (s: { ticker: string; signal_type: string; notes?: string }) =>
@@ -197,7 +198,7 @@ ${(intradaySignals || [])
       (a: { status: string }) => a.status === 'triggered'
     );
     if (triggered.length > 0) {
-      sections.push(`TRIGGERED PRICE ALERTS (action needed):
+      tier1Sections.push(`TRIGGERED PRICE ALERTS (action needed):
 ${triggered
   .map(
     (a: { ticker: string; condition: string; target_price: number }) =>
@@ -210,7 +211,7 @@ ${triggered
       (a: { severity: string }) => a.severity === 'critical'
     );
     if (criticalAlerts.length > 0) {
-      sections.push(`CRITICAL POSITION ALERTS:
+      tier1Sections.push(`CRITICAL POSITION ALERTS:
 ${criticalAlerts
   .map((a: { ticker: string; message: string }) => `  ${a.ticker}: ${a.message}`)
   .join('\n')}`);
@@ -236,7 +237,7 @@ ${criticalAlerts
       .map((p) => p.symbol);
 
     if (unprotected.length > 0) {
-      sections.push(`UNPROTECTED POSITIONS (no stop loss):
+      tier1Sections.push(`UNPROTECTED POSITIONS (no stop loss):
 ${unprotected.join(', ')} — stops must be created immediately`);
       freshData.unprotected = unprotected;
     }
@@ -258,7 +259,7 @@ ${unprotected.join(', ')} — stops must be created immediately`);
       return new Date(t.expires_at).toDateString() === new Date().toDateString();
     });
 
-    sections.push(`TRADE QUEUE:
+    tier1Sections.push(`TRADE QUEUE:
 Pending approval: ${pending.length}
 ${pending
   .map(
@@ -273,7 +274,7 @@ Executed today: ${executedToday.length}`);
 
   // TIER 2 — Every 30 minutes (full intelligence pipeline)
   if (tier >= 2) {
-    sections.push(`\n--- TIER 2: FULL INTELLIGENCE PIPELINE ---`);
+    tier2Sections.push(`--- TIER 2: FULL INTELLIGENCE PIPELINE ---`);
 
     try {
       const sweepResult = await withTier2Timeout(
@@ -281,10 +282,12 @@ Executed today: ${executedToday.length}`);
         'Intelligence sweep'
       ).catch(() => [] as Awaited<ReturnType<typeof runIntelligenceSweep>>);
       const highStrength = sweepResult.filter((s) => s.strength === 'high');
-      sections.push(`INTELLIGENCE SWEEP: ${sweepResult.length} signals, ${highStrength.length} high strength`);
+      tier2Sections.push(
+        `INTELLIGENCE SWEEP: ${sweepResult.length} signals, ${highStrength.length} high strength`
+      );
       freshData.intelligence_signals = highStrength;
     } catch {
-      sections.push('INTELLIGENCE SWEEP: Failed to run');
+      tier2Sections.push('INTELLIGENCE SWEEP: Failed to run');
     }
 
     try {
@@ -295,14 +298,15 @@ Executed today: ${executedToday.length}`);
       freshData.confirmed_signals = confirmedSignals;
 
       if (confirmedSignals.length > 0) {
-        sections.push(`CONFIRMED SIGNALS (cross-referenced from all sources):
-${confirmedSignals
-  .slice(0, 8)
-  .map(
-    (s: ConfirmedSignal) =>
-      `  ${s.ticker} [${s.confirmation_score}/10]: ${s.source_count} sources (${s.sources.join(', ')}) — ${s.best_reason.slice(0, 100)}`
-  )
-  .join('\n')}`);
+        tier2Sections.push(
+          `CONFIRMED: ${confirmedSignals
+            .slice(0, 5)
+            .map(
+              (s) =>
+                `${s.ticker}[${s.confirmation_score}/10] ${s.sources.slice(0, 2).join('+')}`
+            )
+            .join(', ')}`
+        );
 
         const theses = await withTier2Timeout(
           buildThesesForConfirmedSignals(confirmedSignals),
@@ -311,19 +315,18 @@ ${confirmedSignals
         freshData.auto_theses = theses;
 
         if (theses.length > 0) {
-          sections.push(`AUTO-BUILT THESES (ready for execution):
-${theses
-  .map(
-    (t: AutoThesis) =>
-      `  ${t.ticker} [conviction ${t.conviction_score}/10]: ${t.thesis} | Catalyst: ${t.catalyst}`
-  )
-  .join('\n')}`);
+          tier2Sections.push(
+            `THESES READY: ${theses
+              .slice(0, 4)
+              .map((t) => `${t.ticker}[${t.conviction_score}/10]`)
+              .join(', ')}`
+          );
         }
       } else {
-        sections.push('SIGNAL CONFIRMATION: No multi-source confirmations this cycle');
+        tier2Sections.push('SIGNAL CONFIRMATION: No multi-source confirmations this cycle');
       }
     } catch (e) {
-      sections.push(
+      tier2Sections.push(
         `SIGNAL CONFIRMATION: Failed — ${e instanceof Error ? e.message : 'error'}`
       );
     }
@@ -334,11 +337,9 @@ ${theses
         () => null
       );
       if (rotation) {
-        sections.push(`SECTOR ROTATION (live):
-${rotation.rotation_signal}
-Leading: ${rotation.leading_sectors.map((s) => `${s.sector} ${s.change_1d >= 0 ? '+' : ''}${s.change_1d.toFixed(2)}%`).join(' | ')}
-Lagging: ${rotation.lagging_sectors.map((s) => `${s.sector} ${s.change_1d.toFixed(2)}%`).join(' | ')}`);
-
+        tier2Sections.push(
+          `SECTORS: ${rotation.market_regime.toUpperCase()} — ${rotation.rotation_signal.slice(0, 120)}`
+        );
         freshData.sector_rotation = rotation;
       }
     } catch {
@@ -349,7 +350,7 @@ Lagging: ${rotation.lagging_sectors.map((s) => `${s.sector} ${s.change_1d.toFixe
       const { getMacroSnapshot } = await import('@/lib/api/fred');
       const macro = await withTier2Timeout(getMacroSnapshot(), 'FRED macro').catch(() => null);
       if (macro) {
-        sections.push(macro.market_backdrop);
+        tier2Sections.push(macro.market_backdrop.slice(0, 200));
         freshData.macro_regime = macro.macro_regime;
       }
     } catch {
@@ -363,13 +364,12 @@ Lagging: ${rotation.lagging_sectors.map((s) => `${s.sector} ${s.change_1d.toFixe
           setTimeout(() => reject(new Error('Quiver timeout')), TIER2_API_TIMEOUT_MS)
         ),
       ]).catch(() => [] as Awaited<ReturnType<typeof getRecentCongressionalTrades>>);
-      const recentTrades = congressTrades.slice(0, 5);
+      const recentTrades = congressTrades.slice(0, 3);
 
       if (recentTrades.length > 0) {
-        sections.push(`CONGRESSIONAL TRADING (last 7 days):
-${recentTrades
-  .map((t) => `  ${t.representative}: ${t.type} ${t.ticker} — ${t.amount}`)
-  .join('\n')}`);
+        tier2Sections.push(
+          `CONGRESS: ${recentTrades.map((t) => `${t.representative} ${t.type} ${t.ticker}`).join(', ')}`
+        );
         freshData.congressional = recentTrades;
       }
     } catch {
@@ -389,13 +389,14 @@ ${recentTrades
         .limit(5);
 
       if ((earnings || []).length > 0) {
-        sections.push(`UPCOMING EARNINGS (next 5 days):
-${(earnings || [])
-  .map(
-    (e: { symbol: string; date: string; hour: string; eps_estimate?: number }) =>
-      `  ${e.symbol}: ${e.date} ${e.hour === 'bmo' ? 'BMO' : 'AMC'} | EPS est: $${e.eps_estimate || 'N/A'}`
-  )
-  .join('\n')}`);
+        tier2Sections.push(
+          `EARNINGS: ${(earnings || [])
+            .map(
+              (e: { symbol: string; date: string; hour: string }) =>
+                `${e.symbol} ${e.date} ${e.hour === 'bmo' ? 'BMO' : 'AMC'}`
+            )
+            .join(', ')}`
+        );
         freshData.earnings = earnings;
       }
     } catch {
@@ -404,16 +405,15 @@ ${(earnings || [])
 
     try {
       const { getFearGreedIndex } = await import('@/lib/api/market-sentiment');
-      const fearGreed = await withTier2Timeout(getFearGreedIndex(), 'Fear & Greed').catch(
-        () => null
-      );
-      if (fearGreed) {
-        sections.push(`MARKET SENTIMENT (Fear & Greed):
-Index: ${fearGreed.value}/100 — ${fearGreed.label}
-Signal: ${fearGreed.trading_signal}
-${fearGreed.is_contrarian_buy ? '⚡ CONTRARIAN BUY SIGNAL ACTIVE — Extreme fear historically precedes recoveries' : ''}
-${fearGreed.is_contrarian_sell ? '⚠️ CONTRARIAN CAUTION — Extreme greed historically precedes pullbacks' : ''}`);
-        freshData.fear_greed = fearGreed;
+      const fg = await Promise.race([
+        getFearGreedIndex(),
+        new Promise<null>((_, r) => setTimeout(() => r(null), 3000)),
+      ]).catch(() => null);
+      if (fg) {
+        tier2Sections.push(
+          `SENTIMENT: Fear & Greed ${fg.value}/100 (${fg.label})${fg.is_contrarian_buy ? ' — CONTRARIAN BUY SIGNAL' : fg.is_contrarian_sell ? ' — CONTRARIAN CAUTION' : ''}`
+        );
+        freshData.fear_greed = fg;
       }
     } catch {
       /* skip */
@@ -421,17 +421,15 @@ ${fearGreed.is_contrarian_sell ? '⚠️ CONTRARIAN CAUTION — Extreme greed hi
 
     try {
       const { getUpcomingEconomicEvents } = await import('@/lib/api/market-sentiment');
-      const events = await withTier2Timeout(getUpcomingEconomicEvents(), 'Economic calendar').catch(
-        () => [] as Awaited<ReturnType<typeof getUpcomingEconomicEvents>>
-      );
-      const todayEvents = events.filter((e) => e.is_today);
-      const thisWeekEvents = events.filter((e) => e.is_this_week && !e.is_today);
-
-      if (todayEvents.length > 0 || thisWeekEvents.length > 0) {
-        sections.push(`ECONOMIC CALENDAR:
-${todayEvents.length > 0 ? `TODAY: ${todayEvents.map((e) => `${e.event} at ${e.time} [${e.impact.toUpperCase()} IMPACT]`).join(', ')}` : ''}
-${thisWeekEvents.length > 0 ? `THIS WEEK: ${thisWeekEvents.slice(0, 3).map((e) => `${e.event} on ${e.date}`).join(', ')}` : ''}
-${todayEvents.some((e) => e.impact === 'high') ? '⚠️ HIGH IMPACT RELEASE TODAY — Consider reducing position sizes and tightening stops before release' : ''}`);
+      const events = await Promise.race([
+        getUpcomingEconomicEvents(),
+        new Promise<never[]>((_, r) => setTimeout(() => r([]), 3000)),
+      ]).catch(() => [] as Awaited<ReturnType<typeof getUpcomingEconomicEvents>>);
+      const todayHigh = events.filter((e) => e.is_today && e.impact === 'high');
+      if (todayHigh.length > 0) {
+        tier2Sections.push(
+          `ECON CALENDAR: HIGH IMPACT today — ${todayHigh.map((e) => e.event).join(', ')} — tighten stops around release`
+        );
         freshData.economic_events = events;
       }
     } catch {
@@ -440,21 +438,16 @@ ${todayEvents.some((e) => e.impact === 'high') ? '⚠️ HIGH IMPACT RELEASE TOD
 
     try {
       const { getRecentInsiderTrades } = await import('@/lib/api/fmp');
-      const insiders = await withTier2Timeout(getRecentInsiderTrades(10), 'Insider trades').catch(
-        () => [] as Awaited<ReturnType<typeof getRecentInsiderTrades>>
-      );
-      const highValue = insiders.filter((t) => t.signal_strength === 'high');
-
-      if (highValue.length > 0) {
-        sections.push(`CORPORATE INSIDER BUYING (large purchases):
-${highValue
-  .slice(0, 5)
-  .map(
-    (t) =>
-      `  ${t.ticker}: ${t.insider_name} (${t.insider_title}) bought $${(t.dollar_value / 1000).toFixed(0)}K on ${t.transaction_date}`
-  )
-  .join('\n')}`);
-        freshData.insider_trades = highValue;
+      const insiders = await Promise.race([
+        getRecentInsiderTrades(5),
+        new Promise<never[]>((_, r) => setTimeout(() => r([]), 3000)),
+      ]).catch(() => [] as Awaited<ReturnType<typeof getRecentInsiderTrades>>);
+      const big = insiders.filter((t) => t.signal_strength === 'high').slice(0, 3);
+      if (big.length > 0) {
+        tier2Sections.push(
+          `INSIDER BUYING: ${big.map((t) => `${t.ticker} $${(t.dollar_value / 1000).toFixed(0)}K (${t.insider_title})`).join(', ')}`
+        );
+        freshData.insider_trades = big;
       }
     } catch {
       /* skip */
@@ -462,20 +455,19 @@ ${highValue
 
     try {
       const { scanForSqueezeSetups } = await import('@/lib/api/short-interest');
-      const watchlistResult = await supabase.from('watchlist').select('ticker').limit(15);
+      const watchlistResult = await supabase.from('watchlist').select('ticker').limit(10);
       const tickers = (watchlistResult.data || []).map((w: { ticker: string }) => w.ticker);
-      const squeezes = await withTier2Timeout(scanForSqueezeSetups(tickers), 'Short interest').catch(
-        () => [] as Awaited<ReturnType<typeof scanForSqueezeSetups>>
-      );
-
+      const squeezes = await Promise.race([
+        scanForSqueezeSetups(tickers),
+        new Promise<never[]>((_, r) => setTimeout(() => r([]), 5000)),
+      ]).catch(() => [] as Awaited<ReturnType<typeof scanForSqueezeSetups>>);
       if (squeezes.length > 0) {
-        sections.push(`SQUEEZE SETUPS DETECTED:
-${squeezes
-  .map(
-    (s) =>
-      `  ${s.ticker}: ${s.short_float_pct.toFixed(1)}% float short, ${s.days_to_cover.toFixed(1)} days to cover — ${s.reason}`
-  )
-  .join('\n')}`);
+        tier2Sections.push(
+          `SQUEEZE SETUPS: ${squeezes
+            .slice(0, 3)
+            .map((s) => `${s.ticker} ${s.short_float_pct.toFixed(0)}% short`)
+            .join(', ')}`
+        );
         freshData.squeeze_setups = squeezes;
       }
     } catch {
@@ -485,10 +477,9 @@ ${squeezes
     try {
       const weights = await calculateSignalWeights();
       if (weights.total_signals_tracked > 0) {
-        sections.push(`SIGNAL PERFORMANCE (learning layer):
-Overall win rate: ${weights.overall_win_rate.toFixed(1)}%
-Best signal: ${weights.best_signal} | Worst: ${weights.worst_signal}
-${weights.recommendation}`);
+        tier2Sections.push(
+          `SIGNAL PERF: ${weights.overall_win_rate.toFixed(1)}% win rate — best: ${weights.best_signal}`
+        );
       }
     } catch {
       /* skip */
@@ -497,21 +488,19 @@ ${weights.recommendation}`);
 
   // TIER 3 — Every 60 minutes (deep analysis)
   if (tier >= 3) {
-    sections.push(`\n--- TIER 3 REFRESH (60-min cycle) ---`);
+    tier2Sections.push(`--- TIER 3 REFRESH (60-min cycle) ---`);
 
     try {
       const optionsFlow = await getUnusualOptionsFlow();
       const highFlow = optionsFlow.filter((f) => f.signal_strength === 'high');
 
       if (highFlow.length > 0) {
-        sections.push(`UNUSUAL OPTIONS FLOW (just refreshed):
-${highFlow
-  .slice(0, 3)
-  .map(
-    (f) =>
-      `  ${f.ticker} ${f.type.toUpperCase()} $${f.strike}: ${f.description}`
-  )
-  .join('\n')}`);
+        tier2Sections.push(
+          `OPTIONS FLOW: ${highFlow
+            .slice(0, 3)
+            .map((f) => `${f.ticker} ${f.type.toUpperCase()} $${f.strike}`)
+            .join(', ')}`
+        );
         freshData.options_flow = highFlow;
       }
     } catch {
@@ -524,8 +513,9 @@ ${highFlow
       const immediate = rebalanceActions.filter((a) => a.urgency === 'immediate');
 
       if (immediate.length > 0) {
-        sections.push(`REBALANCE NEEDED:
-${immediate.map((a) => `  ${a.ticker}: ${a.reason}`).join('\n')}`);
+        tier2Sections.push(
+          `REBALANCE: ${immediate.map((a) => `${a.ticker} ${a.reason.slice(0, 60)}`).join('; ')}`
+        );
         freshData.rebalance = immediate;
       }
     } catch {
@@ -537,8 +527,9 @@ ${immediate.map((a) => `  ${a.ticker}: ${a.reason}`).join('\n')}`);
       const correlationAlerts = await runCorrelationMonitor();
 
       if (correlationAlerts.length > 0) {
-        sections.push(`CORRELATION RISK:
-${correlationAlerts.map((a) => `  ${a.message} (${a.risk_level})`).join('\n')}`);
+        tier2Sections.push(
+          `CORRELATION: ${correlationAlerts.map((a) => a.message.slice(0, 80)).join('; ')}`
+        );
       }
     } catch {
       /* skip */
@@ -563,22 +554,33 @@ ${correlationAlerts.map((a) => `  ${a.message} (${a.risk_level})`).join('\n')}`)
       });
 
       if (failedJobs.length > 0 || staleJobs.length > 0) {
-        sections.push(`CRON JOB ISSUES:
-${failedJobs.map((r) => `  FAILED: ${r.job_name}`).join('\n')}
-${staleJobs.map((r) => `  STALE: ${r.job_name} (no recent run)`).join('\n')}`);
+        tier2Sections.push(
+          `CRON ISSUES: ${failedJobs.map((r) => r.job_name).join(', ')}${staleJobs.length ? ` stale: ${staleJobs.map((r) => r.job_name).join(', ')}` : ''}`
+        );
       } else {
-        sections.push(`CRON HEALTH: All jobs running normally`);
+        tier2Sections.push('CRON HEALTH: All jobs running normally');
       }
     } catch {
       /* skip */
     }
   }
 
-  const fullStatus = sections.join('\n\n');
+  const tier1Status = tier1Sections.join('\n\n');
+  const tier1Capped =
+    tier1Status.length > 3000
+      ? `${tier1Status.slice(0, 3000)}\n[TIER 1 TRUNCATED]`
+      : tier1Status;
+
+  const tier2Status = tier2Sections.join('\n');
+  const tier2Capped =
+    tier2Status.length > 2000
+      ? `${tier2Status.slice(0, 2000)}\n[TIER 2 TRUNCATED]`
+      : tier2Status;
+
   const status =
-    fullStatus.length > 6000
-      ? `${fullStatus.slice(0, 6000)}\n\n[STATUS TRUNCATED — remaining data in DB]`
-      : fullStatus;
+    tier2Sections.length > 0
+      ? `${tier1Capped}\n\n--- INTELLIGENCE SUMMARY ---\n${tier2Capped}`
+      : tier1Capped;
 
   return {
     status,
@@ -730,9 +732,17 @@ SWING / INVESTING MODE — Patience and conviction:
   const modeInstruction =
     autonomy.trading_mode === 'day_trading' ? dayTradingInstruction : swingTradingInstruction;
 
+  const staleOrderInstruction = `
+STALE ORDER RULE: If you see pending buy orders where the current price is MORE THAN 2% 
+away from the order's limit price, they are stale and will never fill.
+ACTION: AUTO_EXECUTE GET /api/alpaca/orders/cancel-all to clear them.
+Then re-queue fresh orders at current market prices.
+This is PRIORITY — stale orders block capital and prevent fresh trades.
+`;
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
+    max_tokens: 800,
     messages: [
       {
         role: 'user',
@@ -741,6 +751,7 @@ SWING / INVESTING MODE — Patience and conviction:
 ${tierNote}
 ${autonomyInstruction}
 ${sectorInstruction}${macroInstruction}${pipelineInstruction}${modeInstruction}
+${staleOrderInstruction}
 
 FRESH PLATFORM STATUS (just gathered):
 ${status}
@@ -751,6 +762,7 @@ ${recentActionSummary}
 AVAILABLE_ACTIONS:
 - Dismiss triggered price alerts: GET /api/alerts/dismiss
 - Check and update alerts: GET /api/alerts/check
+- Cancel all stale open orders: GET /api/alpaca/orders/cancel-all
 
 DECISION RULES:
 - AUTO_EXECUTE: Stop loss creation, alert dismissal, data refreshes, rebalance trims (in full autonomy)
