@@ -60,6 +60,15 @@ interface AutonomyConfig {
   daily_trade_limit: number;
 }
 
+interface CheckIntervals {
+  profit_check_minutes: number;
+  agent_loop_minutes: number;
+  position_monitor_minutes: number;
+  alert_check_minutes: number;
+}
+
+type IntervalKey = keyof CheckIntervals;
+
 const DEFAULT_AUTO_CLOSE: ToggleSetting = { enabled: true };
 const DEFAULT_WATCHLIST_AUTOPOP: ToggleSetting = { enabled: true };
 const DEFAULT_AUTONOMOUS_AGENT: ToggleSetting = { enabled: true };
@@ -91,6 +100,13 @@ const DEFAULT_NOTIFICATIONS: NotificationSettings = {
 const DEFAULT_EMAIL: EmailSettings = {
   weekly_enabled: true,
   email_address: '',
+};
+
+const DEFAULT_INTERVALS: CheckIntervals = {
+  profit_check_minutes: 30,
+  agent_loop_minutes: 30,
+  position_monitor_minutes: 10,
+  alert_check_minutes: 15,
 };
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -263,6 +279,7 @@ export default function SettingsPage() {
   const [autonomyConfig, setAutonomyConfig] = useState<AutonomyConfig | null>(null);
   const [tradingMode, setTradingMode] = useState<'day_trading' | 'swing_trading'>('swing_trading');
   const [modeSwitching, setModeSwitching] = useState(false);
+  const [intervals, setIntervals] = useState<CheckIntervals>(DEFAULT_INTERVALS);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -299,6 +316,10 @@ export default function SettingsPage() {
       .then((data) => {
         if (data.current_mode) setTradingMode(data.current_mode);
       })
+      .catch(() => {});
+    void fetch('/api/settings/intervals')
+      .then((r) => r.json())
+      .then((data) => setIntervals({ ...DEFAULT_INTERVALS, ...data }))
       .catch(() => {});
   }, [fetchSettings]);
 
@@ -976,6 +997,142 @@ export default function SettingsPage() {
             Switching mode — updating all parameters...
           </div>
         )}
+      </div>
+
+      <div
+        style={{
+          background: '#111620',
+          border: '1px solid #1e2a3a',
+          borderRadius: 12,
+          padding: 24,
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: 'monospace',
+            fontSize: 9,
+            letterSpacing: 3,
+            color: '#7a8fa8',
+            marginBottom: 6,
+          }}
+        >
+          ◆ CYCLE CONFIGURATION
+        </div>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#e8edf5', margin: '0 0 4px' }}>
+          Check Intervals
+        </h2>
+        <p style={{ fontSize: 12, color: '#7a8fa8', margin: '0 0 20px' }}>
+          How often each system runs during market hours. Changes take effect on next cycle.
+        </p>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+            gap: 12,
+          }}
+        >
+          {(
+            [
+              {
+                key: 'agent_loop_minutes' as IntervalKey,
+                label: 'AGENT LOOP',
+                desc: 'Intelligence + trade decisions',
+                options: [10, 15, 30, 60],
+              },
+              {
+                key: 'profit_check_minutes' as IntervalKey,
+                label: 'PROFIT / EXIT CHECK',
+                desc: 'Profit targets + exit logic',
+                options: [5, 10, 15, 30],
+              },
+              {
+                key: 'position_monitor_minutes' as IntervalKey,
+                label: 'POSITION MONITOR',
+                desc: 'Stop loss monitoring',
+                options: [5, 10, 15, 30],
+              },
+              {
+                key: 'alert_check_minutes' as IntervalKey,
+                label: 'ALERT CHECK',
+                desc: 'Price alert monitoring',
+                options: [5, 10, 15, 30],
+              },
+            ] as const
+          ).map((item) => (
+            <div
+              key={item.key}
+              style={{
+                background: '#0d1117',
+                border: '1px solid #1e2a3a',
+                borderRadius: 10,
+                padding: 14,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  letterSpacing: 2,
+                  color: '#3d5068',
+                  marginBottom: 4,
+                }}
+              >
+                {item.label}
+              </div>
+              <div style={{ fontSize: 11, color: '#7a8fa8', marginBottom: 10 }}>{item.desc}</div>
+              <select
+                value={intervals[item.key] || 30}
+                onChange={async (e) => {
+                  const newVal = parseInt(e.target.value, 10);
+                  const newIntervals = { ...intervals, [item.key]: newVal };
+                  setIntervals(newIntervals);
+                  await fetch('/api/settings/intervals', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newIntervals),
+                  });
+                }}
+                style={{
+                  width: '100%',
+                  background: '#111620',
+                  border: '1px solid #1e2a3a',
+                  borderRadius: 6,
+                  color: '#00ff88',
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  padding: '6px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                {item.options.map((opt) => (
+                  <option key={opt} value={opt} style={{ background: '#111620' }}>
+                    Every {opt} min
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+
+        <div
+          style={{
+            marginTop: 12,
+            padding: '8px 12px',
+            background: '#ffd70010',
+            border: '1px solid #ffd70020',
+            borderRadius: 8,
+            fontFamily: 'monospace',
+            fontSize: 9,
+            color: '#ffd700',
+            letterSpacing: 1,
+          }}
+        >
+          ⚠️ TESTING MODE: All intervals set to 30min to conserve API credits. Switch agent loop to
+          1min in production for real-time decisions.
+        </div>
       </div>
 
       {loading ? (

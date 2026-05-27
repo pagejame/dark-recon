@@ -54,7 +54,7 @@
     },
     {
       "path": "/api/cron/profit-check",
-      "schedule": "*/5 13-20 * * 1-5"
+      "schedule": "*/30 13-20 * * 1-5"
     },
     {
       "path": "/api/cron/eod-close",
