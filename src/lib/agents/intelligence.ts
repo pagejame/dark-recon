@@ -200,8 +200,9 @@ async function sweepFinancialNews(): Promise<IntelligenceSignal[]> {
     const news = (await res.json()) as FinnhubNewsItem[];
 
     const relevant = (Array.isArray(news) ? news : [])
+      .filter((n): n is FinnhubNewsItem => Boolean(n && typeof n === 'object'))
       .filter((n) => {
-        const text = (n.headline + ' ' + (n.summary || '')).toUpperCase();
+        const text = ((n.headline || '') + ' ' + (n.summary || '')).toUpperCase();
         return (
           WATCHLIST.some((t) => text.includes(t)) ||
           ['FED', 'RATE', 'INFLATION', 'RECESSION', 'EARNINGS'].some((kw) => text.includes(kw))
@@ -210,15 +211,15 @@ async function sweepFinancialNews(): Promise<IntelligenceSignal[]> {
       .slice(0, 8);
 
     relevant.forEach((n) => {
-      const text = (n.headline + ' ' + (n.summary || '')).toUpperCase();
+      const text = ((n.headline || '') + ' ' + (n.summary || '')).toUpperCase();
       const ticker = WATCHLIST.find((t) => text.includes(t));
 
       signals.push({
         source: `Financial News — ${n.source || 'Market'}`,
         signal_type: 'financial_news',
         ticker,
-        headline: n.headline?.slice(0, 200) || '',
-        summary: n.summary?.slice(0, 300) || '',
+        headline: (n.headline || '').slice(0, 200),
+        summary: (n.summary || '').slice(0, 300),
         url: n.url,
         sentiment: 'neutral',
         strength: 'medium',
@@ -226,7 +227,7 @@ async function sweepFinancialNews(): Promise<IntelligenceSignal[]> {
       });
     });
   } catch (e) {
-    console.error('Financial news sweep error:', e);
+    console.error('Financial news sweep error:', e instanceof Error ? e.message : e);
   }
   return signals;
 }
@@ -238,42 +239,45 @@ const STRENGTH_ORDER: Record<IntelligenceSignal['strength'], number> = {
 };
 
 export async function runIntelligenceSweep(): Promise<IntelligenceSignal[]> {
-  const sweep = async (): Promise<IntelligenceSignal[]> => {
-    const [wsbSignals, stocksSignals, investingSignals, secSignals, newsSignals] =
-      await Promise.allSettled([
-        sweepReddit('wallstreetbets'),
-        sweepReddit('stocks'),
-        sweepReddit('investing'),
-        sweepSECFilings(),
-        sweepFinancialNews(),
-      ]);
+  const signals: IntelligenceSignal[] = [];
 
-    const allSignals = [
-      ...(wsbSignals.status === 'fulfilled' ? wsbSignals.value : []),
-      ...(stocksSignals.status === 'fulfilled' ? stocksSignals.value : []),
-      ...(investingSignals.status === 'fulfilled' ? investingSignals.value : []),
-      ...(secSignals.status === 'fulfilled' ? secSignals.value : []),
-      ...(newsSignals.status === 'fulfilled' ? newsSignals.value : []),
-    ];
+  try {
+    const sweep = async (): Promise<IntelligenceSignal[]> => {
+      const [wsbSignals, stocksSignals, investingSignals, secSignals, newsSignals] =
+        await Promise.allSettled([
+          sweepReddit('wallstreetbets'),
+          sweepReddit('stocks'),
+          sweepReddit('investing'),
+          sweepSECFilings(),
+          sweepFinancialNews(),
+        ]);
 
-    if (allSignals.length === 0) return [];
+      const allSignals = [
+        ...(wsbSignals.status === 'fulfilled' ? wsbSignals.value : []),
+        ...(stocksSignals.status === 'fulfilled' ? stocksSignals.value : []),
+        ...(investingSignals.status === 'fulfilled' ? investingSignals.value : []),
+        ...(secSignals.status === 'fulfilled' ? secSignals.value : []),
+        ...(newsSignals.status === 'fulfilled' ? newsSignals.value : []),
+      ];
 
-    try {
-      const signalContext = allSignals
-        .slice(0, 20)
-        .map(
-          (s, i) =>
-            `${i + 1}. [${s.source}] ${s.headline}${s.ticker ? ` (${s.ticker})` : ''}`
-        )
-        .join('\n');
+      if (allSignals.length === 0) return [];
 
-      const message = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        messages: [
-          {
-            role: 'user',
-            content: `You are Dark Recon's Intelligence Sweep Agent. Analyze these signals from across the internet and score each one for trading relevance.
+      try {
+        const signalContext = allSignals
+          .slice(0, 20)
+          .map(
+            (s, i) =>
+              `${i + 1}. [${s.source}] ${s.headline}${s.ticker ? ` (${s.ticker})` : ''}`
+          )
+          .join('\n');
+
+        const message = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2000,
+          messages: [
+            {
+              role: 'user',
+              content: `You are Dark Recon's Intelligence Sweep Agent. Analyze these signals from across the internet and score each one for trading relevance.
 
 SIGNALS FOUND:
 ${signalContext}
@@ -297,48 +301,52 @@ Return ONLY a JSON array. No markdown. Start with [ end with ].
 ]
 
 Only include signals that are genuinely actionable. Skip generic news. Focus on signals that could move a stock price in the next 1-5 days.`,
-          },
-        ],
-      });
-
-      const raw = message.content
-        .filter((b) => b.type === 'text')
-        .map((b) => (b as { type: 'text'; text: string }).text)
-        .join('');
-      const start = raw.indexOf('[');
-      const end = raw.lastIndexOf(']');
-
-      if (start !== -1 && end !== -1) {
-        const scored = JSON.parse(raw.slice(start, end + 1)) as ClaudeScore[];
-        scored.forEach((score) => {
-          const signal = allSignals[score.index - 1];
-          if (signal) {
-            signal.sentiment = score.sentiment || signal.sentiment;
-            signal.strength = score.strength || signal.strength;
-            if (score.ticker) signal.ticker = score.ticker;
-            if (score.ai_summary) signal.summary = score.ai_summary;
-          }
+            },
+          ],
         });
+
+        const raw = message.content
+          .filter((b) => b.type === 'text')
+          .map((b) => (b as { type: 'text'; text: string }).text)
+          .join('');
+        const start = raw.indexOf('[');
+        const end = raw.lastIndexOf(']');
+
+        if (start !== -1 && end !== -1) {
+          const scored = JSON.parse(raw.slice(start, end + 1)) as ClaudeScore[];
+          scored.forEach((score) => {
+            const signal = allSignals[score.index - 1];
+            if (signal) {
+              signal.sentiment = score.sentiment || signal.sentiment;
+              signal.strength = score.strength || signal.strength;
+              if (score.ticker) signal.ticker = score.ticker;
+              if (score.ai_summary) signal.summary = score.ai_summary;
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Claude scoring error:', e instanceof Error ? e.message : e);
       }
-    } catch (e) {
-      console.error('Claude scoring error:', e);
-    }
 
-    return allSignals.sort(
-      (a, b) => STRENGTH_ORDER[a.strength] - STRENGTH_ORDER[b.strength]
-    );
-  };
+      return allSignals.sort(
+        (a, b) => STRENGTH_ORDER[a.strength] - STRENGTH_ORDER[b.strength]
+      );
+    };
 
-  return Promise.race([
-    sweep(),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Intelligence sweep timeout')), 45000)
-    ),
-  ]).catch((e) => {
+    const result = await Promise.race([
+      sweep(),
+      new Promise<IntelligenceSignal[]>((resolve) =>
+        setTimeout(() => resolve([]), 45000)
+      ),
+    ]);
+
+    return result;
+  } catch (e) {
     console.error(
-      'Intelligence sweep timed out:',
+      'Intelligence sweep critical error:',
       e instanceof Error ? e.message : e
     );
-    return [];
-  });
+  }
+
+  return signals;
 }

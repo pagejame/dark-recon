@@ -44,6 +44,7 @@ function getBaseUrl(): string {
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
 const TIER2_API_TIMEOUT_MS = 3000;
+const MAX_TIER2_OPS = 6;
 
 function withTier2Timeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
@@ -308,25 +309,32 @@ Executed today: ${executedToday.length}`);
     /* skip */
   }
 
-  // TIER 2 — Every 30 minutes (full intelligence pipeline)
+  // TIER 2 — Every 30 minutes (full intelligence pipeline, max 6 ops)
   if (tier >= 2) {
     tier2Sections.push(`--- TIER 2: FULL INTELLIGENCE PIPELINE ---`);
+    let tier2OpsRun = 0;
 
-    try {
-      const sweepResult = await withTier2Timeout(
-        runIntelligenceSweep(),
-        'Intelligence sweep'
-      ).catch(() => [] as Awaited<ReturnType<typeof runIntelligenceSweep>>);
+    const runTier2 = async (label: string, fn: () => Promise<void>): Promise<void> => {
+      if (tier2OpsRun >= MAX_TIER2_OPS) return;
+      tier2OpsRun++;
+      try {
+        await fn();
+      } catch (e) {
+        console.error(`${label} failed (non-fatal):`, e instanceof Error ? e.message : e);
+        tier2Sections.push(`${label.toUpperCase()}: Unavailable this cycle`);
+      }
+    };
+
+    await runTier2('Intelligence sweep', async () => {
+      const sweepResult = await withTier2Timeout(runIntelligenceSweep(), 'Intelligence sweep');
       const highStrength = sweepResult.filter((s) => s.strength === 'high');
       tier2Sections.push(
         `INTELLIGENCE SWEEP: ${sweepResult.length} signals, ${highStrength.length} high strength`
       );
       freshData.intelligence_signals = highStrength;
-    } catch {
-      tier2Sections.push('INTELLIGENCE SWEEP: Failed to run');
-    }
+    });
 
-    try {
+    await runTier2('Twitter intelligence', async () => {
       const { scanTwitterIntelligence, saveTwitterSignals } = await import(
         '@/lib/api/twitter-intel'
       );
@@ -335,7 +343,7 @@ Executed today: ${executedToday.length}`);
         new Promise<Awaited<ReturnType<typeof scanTwitterIntelligence>>>((resolve) =>
           setTimeout(() => resolve([]), 10000)
         ),
-      ]).catch(() => [] as Awaited<ReturnType<typeof scanTwitterIntelligence>>);
+      ]);
 
       if (twitterSignals.length > 0) {
         await saveTwitterSignals(twitterSignals);
@@ -348,15 +356,13 @@ ${twitterSignals
         );
         freshData.twitter_signals = twitterSignals;
       }
-    } catch {
-      /* skip */
-    }
+    });
 
-    try {
+    await runTier2('Signal confirmation', async () => {
       const confirmedSignals = await withTier2Timeout(
         runSignalConfirmation(),
         'Signal confirmation'
-      ).catch(() => [] as ConfirmedSignal[]);
+      );
       freshData.confirmed_signals = confirmedSignals;
 
       if (confirmedSignals.length > 0) {
@@ -370,62 +376,51 @@ ${twitterSignals
             .join(', ')}`
         );
 
-        const theses = await withTier2Timeout(
-          buildThesesForConfirmedSignals(confirmedSignals.slice(0, 2)),
-          'Thesis builder'
-        ).catch(() => [] as AutoThesis[]);
-        freshData.auto_theses = theses;
-
-        if (theses.length > 0) {
-          tier2Sections.push(
-            `THESES READY: ${theses
-              .slice(0, 4)
-              .map((t) => `${t.ticker}[${t.conviction_score}/10]`)
-              .join(', ')}`
+        try {
+          const theses = await withTier2Timeout(
+            buildThesesForConfirmedSignals(confirmedSignals.slice(0, 2)),
+            'Thesis builder'
           );
+          freshData.auto_theses = theses;
+
+          if (theses.length > 0) {
+            tier2Sections.push(
+              `THESES READY: ${theses
+                .slice(0, 4)
+                .map((t) => `${t.ticker}[${t.conviction_score}/10]`)
+                .join(', ')}`
+            );
+          }
+        } catch (e) {
+          console.error(
+            'Thesis builder failed (non-fatal):',
+            e instanceof Error ? e.message : e
+          );
+          tier2Sections.push('THESIS BUILDER: Unavailable this cycle');
         }
       } else {
         tier2Sections.push('SIGNAL CONFIRMATION: No multi-source confirmations this cycle');
       }
-    } catch (e) {
-      tier2Sections.push(
-        `SIGNAL CONFIRMATION: Failed — ${e instanceof Error ? e.message : 'error'}`
-      );
-    }
+    });
 
-    try {
+    await runTier2('Sector rotation', async () => {
       const { getSectorRotation } = await import('@/lib/services/sector-rotation');
-      const rotation = await withTier2Timeout(getSectorRotation(), 'Sector rotation').catch(
-        () => null
-      );
+      const rotation = await withTier2Timeout(getSectorRotation(), 'Sector rotation');
       if (rotation) {
         tier2Sections.push(
           `SECTORS: ${rotation.market_regime.toUpperCase()} — ${rotation.rotation_signal.slice(0, 120)}`
         );
         freshData.sector_rotation = rotation;
       }
-    } catch {
-      /* skip */
-    }
+    });
 
-    try {
-      const { getMacroSnapshot } = await import('@/lib/api/fred');
-      const macro = await withTier2Timeout(getMacroSnapshot(), 'FRED macro').catch(() => null);
-      if (macro) {
-        tier2Sections.push(macro.market_backdrop.slice(0, 200));
-        freshData.macro_regime = macro.macro_regime;
-      }
-    } catch {
-      /* skip */
-    }
-
-    try {
+    await runTier2('Congressional trades', async () => {
       const congressTrades = await Promise.race([
         getRecentCongressionalTrades(7, 20),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Quiver timeout')), TIER2_API_TIMEOUT_MS)
+        new Promise<Awaited<ReturnType<typeof getRecentCongressionalTrades>>>((resolve) =>
+          setTimeout(() => resolve([]), TIER2_API_TIMEOUT_MS)
         ),
-      ]).catch(() => [] as Awaited<ReturnType<typeof getRecentCongressionalTrades>>);
+      ]);
       const recentTrades = congressTrades.slice(0, 3);
 
       if (recentTrades.length > 0) {
@@ -434,11 +429,49 @@ ${twitterSignals
         );
         freshData.congressional = recentTrades;
       }
-    } catch {
-      /* skip */
-    }
+    });
 
-    try {
+    await runTier2('FRED macro', async () => {
+      const { getMacroSnapshot } = await import('@/lib/api/fred');
+      const macro = await withTier2Timeout(getMacroSnapshot(), 'FRED macro');
+      if (macro) {
+        tier2Sections.push(macro.market_backdrop.slice(0, 200));
+        freshData.macro_regime = macro.macro_regime;
+      }
+    });
+
+    await runTier2('Fear & Greed', async () => {
+      const { getFearGreedIndex } = await import('@/lib/api/market-sentiment');
+      const fg = await Promise.race([
+        getFearGreedIndex(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+      ]);
+      if (fg) {
+        tier2Sections.push(
+          `SENTIMENT: Fear & Greed ${fg.value}/100 (${fg.label})${fg.is_contrarian_buy ? ' — CONTRARIAN BUY SIGNAL' : fg.is_contrarian_sell ? ' — CONTRARIAN CAUTION' : ''}`
+        );
+        freshData.fear_greed = fg;
+      }
+    });
+
+    await runTier2('Economic calendar', async () => {
+      const { getUpcomingEconomicEvents } = await import('@/lib/api/market-sentiment');
+      const events = await Promise.race([
+        getUpcomingEconomicEvents(),
+        new Promise<Awaited<ReturnType<typeof getUpcomingEconomicEvents>>>((resolve) =>
+          setTimeout(() => resolve([]), 3000)
+        ),
+      ]);
+      const todayHigh = events.filter((e) => e.is_today && e.impact === 'high');
+      if (todayHigh.length > 0) {
+        tier2Sections.push(
+          `ECON CALENDAR: HIGH IMPACT today — ${todayHigh.map((e) => e.event).join(', ')} — tighten stops around release`
+        );
+        freshData.economic_events = events;
+      }
+    });
+
+    await runTier2('Earnings calendar', async () => {
       const { data: earnings } = await supabase
         .from('earnings_events')
         .select('symbol, date, hour, eps_estimate')
@@ -461,49 +494,16 @@ ${twitterSignals
         );
         freshData.earnings = earnings;
       }
-    } catch {
-      /* skip */
-    }
+    });
 
-    try {
-      const { getFearGreedIndex } = await import('@/lib/api/market-sentiment');
-      const fg = await Promise.race([
-        getFearGreedIndex(),
-        new Promise<null>((_, r) => setTimeout(() => r(null), 3000)),
-      ]).catch(() => null);
-      if (fg) {
-        tier2Sections.push(
-          `SENTIMENT: Fear & Greed ${fg.value}/100 (${fg.label})${fg.is_contrarian_buy ? ' — CONTRARIAN BUY SIGNAL' : fg.is_contrarian_sell ? ' — CONTRARIAN CAUTION' : ''}`
-        );
-        freshData.fear_greed = fg;
-      }
-    } catch {
-      /* skip */
-    }
-
-    try {
-      const { getUpcomingEconomicEvents } = await import('@/lib/api/market-sentiment');
-      const events = await Promise.race([
-        getUpcomingEconomicEvents(),
-        new Promise<never[]>((_, r) => setTimeout(() => r([]), 3000)),
-      ]).catch(() => [] as Awaited<ReturnType<typeof getUpcomingEconomicEvents>>);
-      const todayHigh = events.filter((e) => e.is_today && e.impact === 'high');
-      if (todayHigh.length > 0) {
-        tier2Sections.push(
-          `ECON CALENDAR: HIGH IMPACT today — ${todayHigh.map((e) => e.event).join(', ')} — tighten stops around release`
-        );
-        freshData.economic_events = events;
-      }
-    } catch {
-      /* skip */
-    }
-
-    try {
+    await runTier2('Insider trades', async () => {
       const { getRecentInsiderTrades } = await import('@/lib/api/fmp');
       const insiders = await Promise.race([
         getRecentInsiderTrades(5),
-        new Promise<never[]>((_, r) => setTimeout(() => r([]), 3000)),
-      ]).catch(() => [] as Awaited<ReturnType<typeof getRecentInsiderTrades>>);
+        new Promise<Awaited<ReturnType<typeof getRecentInsiderTrades>>>((resolve) =>
+          setTimeout(() => resolve([]), 3000)
+        ),
+      ]);
       const big = insiders.filter((t) => t.signal_strength === 'high').slice(0, 3);
       if (big.length > 0) {
         tier2Sections.push(
@@ -511,18 +511,18 @@ ${twitterSignals
         );
         freshData.insider_trades = big;
       }
-    } catch {
-      /* skip */
-    }
+    });
 
-    try {
+    await runTier2('Squeeze setups', async () => {
       const { scanForSqueezeSetups } = await import('@/lib/api/short-interest');
       const watchlistResult = await supabase.from('watchlist').select('ticker').limit(10);
       const tickers = (watchlistResult.data || []).map((w: { ticker: string }) => w.ticker);
       const squeezes = await Promise.race([
         scanForSqueezeSetups(tickers),
-        new Promise<never[]>((_, r) => setTimeout(() => r([]), 5000)),
-      ]).catch(() => [] as Awaited<ReturnType<typeof scanForSqueezeSetups>>);
+        new Promise<Awaited<ReturnType<typeof scanForSqueezeSetups>>>((resolve) =>
+          setTimeout(() => resolve([]), 5000)
+        ),
+      ]);
       if (squeezes.length > 0) {
         tier2Sections.push(
           `SQUEEZE SETUPS: ${squeezes
@@ -532,20 +532,16 @@ ${twitterSignals
         );
         freshData.squeeze_setups = squeezes;
       }
-    } catch {
-      /* skip */
-    }
+    });
 
-    try {
+    await runTier2('Signal performance', async () => {
       const weights = await calculateSignalWeights();
       if (weights.total_signals_tracked > 0) {
         tier2Sections.push(
           `SIGNAL PERF: ${weights.overall_win_rate.toFixed(1)}% win rate — best: ${weights.best_signal}`
         );
       }
-    } catch {
-      /* skip */
-    }
+    });
   }
 
   // TIER 3 — Every 60 minutes (deep analysis)
@@ -635,8 +631,8 @@ ${twitterSignals
 
   const tier2Status = tier2Sections.join('\n');
   const tier2Capped =
-    tier2Status.length > 2000
-      ? `${tier2Status.slice(0, 2000)}\n[TIER 2 TRUNCATED]`
+    tier2Status.length > 1500
+      ? `${tier2Status.slice(0, 1500)}\n[TIER 2 TRUNCATED]`
       : tier2Status;
 
   const status =
@@ -713,7 +709,14 @@ export async function runAutonomousAgent(): Promise<AgentRunResult> {
     (recentActions || []).map((a: { action_taken: string }) => a.action_taken).join('\n') ||
     'None in last 30 minutes';
 
-  const { status: rawStatus, tier, fresh_data } = await gatherStatus(supabase);
+  const { status: rawStatus, tier, fresh_data } = await gatherStatus(supabase).catch((e) => {
+    console.error('gatherStatus failed:', e instanceof Error ? e.message : e);
+    return {
+      status: 'Status gathering failed — use DB data only',
+      tier: 1,
+      fresh_data: {} as Record<string, unknown>,
+    };
+  });
 
   if (tier >= 2) {
     await new Promise((r) => setTimeout(r, 500));
@@ -731,6 +734,27 @@ Circuit breaker: ${circuitBreaker.triggered ? `TRIGGERED — ${circuitBreaker.re
   const status = riskControlsSection ? `${riskControlsSection}\n\n${rawStatus}` : rawStatus;
   fresh_data.circuit_breaker = circuitBreaker;
   fresh_data.effective_min_conviction = effectiveMinConviction;
+
+  if (!status || status.length < 50) {
+    console.error('Status too short to be useful, skipping agent call');
+    return {
+      ran_at: new Date().toISOString(),
+      decisions: [
+        {
+          action: 'SKIP',
+          issue: 'Insufficient status data',
+          rationale: 'Status gathering returned insufficient data',
+          priority: 'low',
+        },
+      ],
+      executed: 0,
+      queued: 0,
+      notified: 0,
+      skipped: 1,
+      errors: ['Status too short'],
+      duration_ms: Date.now() - startTime,
+    };
+  }
 
   const autonomyInstruction = autonomy.enabled
     ? `FULL AUTONOMY MODE ACTIVE${autonomy.days_remaining != null ? ` (${autonomy.days_remaining} days remaining in 30-day trial)` : ''}.
