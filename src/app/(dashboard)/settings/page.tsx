@@ -1430,7 +1430,7 @@ export default function SettingsPage() {
                   ⚡ {agentResult.executed} executed · 📋 {agentResult.queued} queued · 🔔{' '}
                   {agentResult.notified} flagged
                 </div>
-                {(agentResult.decisions || [])
+                {(Array.isArray(agentResult.decisions) ? agentResult.decisions : [])
                   .filter((d) => d.action !== 'SKIP')
                   .map((d, i) => (
                     <div

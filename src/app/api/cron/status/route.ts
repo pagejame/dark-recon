@@ -13,7 +13,7 @@ export async function GET() {
     const { data: agentRun } = await supabase
       .from('cron_runs')
       .select('*')
-      .eq('job_name', 'autonomous-agent')
+      .in('job_name', ['autonomous-agent', 'agent-loop'])
       .order('ran_at', { ascending: false })
       .limit(1)
       .maybeSingle();

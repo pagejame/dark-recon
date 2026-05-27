@@ -33,6 +33,10 @@ interface AlpacaOrder {
   status: string;
 }
 
+function sanitizeForPrompt(text: string): string {
+  return text.replace(/[`$\\]/g, ' ');
+}
+
 export async function generateMorningBriefing(): Promise<MorningBriefing> {
   const today = new Date().toDateString();
   const hour = new Date().getHours();
@@ -42,9 +46,8 @@ export async function generateMorningBriefing(): Promise<MorningBriefing> {
   let pendingOrders: AlpacaOrder[] = [];
   let preMarketData: PreMarketData | null = null;
 
-  const [positionsResult, macroResult, ordersResult] = await Promise.allSettled([
+  const [positionsResult, ordersResult] = await Promise.allSettled([
     getPositions(),
-    getMacroSnapshot(),
     getOrders('open', 50),
   ]);
 
@@ -58,23 +61,33 @@ export async function generateMorningBriefing(): Promise<MorningBriefing> {
     );
   }
 
+  let macroCtx = 'Macro data unavailable';
+  try {
+    const macro = await Promise.race([
+      getMacroSnapshot(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 5000)
+      ),
+    ]);
+    macroCtx = macro.market_backdrop || 'Macro data unavailable';
+    macroCtx = sanitizeForPrompt(macroCtx);
+    macroCtx = `
+MACRO BACKDROP (Federal Reserve Data):
+Regime: ${sanitizeForPrompt(String(macro.macro_regime || 'unknown').toUpperCase())}
+${macroCtx}
+`;
+  } catch {
+    macroCtx = 'Macro data unavailable';
+  }
+
   const preMarketResult = await Promise.allSettled([getPreMarketData(currentPositionTickers)]);
   if (preMarketResult[0].status === 'fulfilled') {
     preMarketData = preMarketResult[0].value;
   }
 
-  const macroCtx =
-    macroResult.status === 'fulfilled'
-      ? `
-MACRO BACKDROP (Federal Reserve Data):
-Regime: ${macroResult.value.macro_regime.toUpperCase()}
-${macroResult.value.market_backdrop}
-`
-      : 'Macro data unavailable';
-
   const preMarketCtx =
     preMarketData != null
-      ? `
+      ? sanitizeForPrompt(`
 OVERNIGHT & PRE-MARKET:
 Market Bias: ${preMarketData.futures.bias.toUpperCase()}
 ${preMarketData.futures.summary}
@@ -82,13 +95,15 @@ ${preMarketData.futures.summary}
 POSITION NEWS SINCE LAST CLOSE:
 ${
   preMarketData.position_news.length > 0
-    ? preMarketData.position_news.map((n) => `${n.ticker}: ${n.headline}`).join('\n')
+    ? preMarketData.position_news
+        .map((n) => `${n.ticker}: ${sanitizeForPrompt(n.headline || '')}`)
+        .join('\n')
     : 'No significant news on open positions overnight'
 }
-`
+`)
       : 'Pre-market data unavailable';
 
-  const limitOrderContext = `
+  const limitOrderContext = sanitizeForPrompt(`
 PENDING LIMIT ORDERS (check fill likelihood at open):
 ${
   pendingOrders.length > 0
@@ -100,7 +115,7 @@ ${
         .join('\n')
     : 'No pending limit orders'
 }
-`;
+`);
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
@@ -165,7 +180,14 @@ Make the briefing_text sharp, direct, and specific. Like a hedge fund analyst. U
   }
 
   const jsonStr = rawText.slice(start, end + 1);
-  const result = JSON.parse(jsonStr) as MorningBriefing;
+  let result: MorningBriefing;
+  try {
+    result = JSON.parse(jsonStr) as MorningBriefing;
+  } catch (parseError) {
+    console.error('Briefing JSON parse error:', parseError);
+    console.error('Briefing raw JSON:', jsonStr.slice(0, 500));
+    throw new Error('Could not parse briefing JSON response');
+  }
 
   if (preMarketData) {
     result.pre_market = preMarketData;

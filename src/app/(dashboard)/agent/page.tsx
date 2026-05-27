@@ -15,9 +15,9 @@ interface AgentRun {
   id: string;
   status: string;
   ran_at: string;
-  duration_ms: number;
+  duration_ms?: number;
   job_name?: string;
-  results: {
+  results?: {
     executed?: number;
     queued?: number;
     notified?: number;
@@ -84,7 +84,12 @@ function RunCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const decisions = Array.isArray(run.results?.decisions) ? run.results.decisions : [];
+  const decisionsList = Array.isArray(run.results?.decisions) ? run.results.decisions : [];
+  const decisionsCount = Array.isArray(run.results?.decisions)
+    ? run.results.decisions.length
+    : typeof run.results?.decisions === 'number'
+      ? run.results.decisions
+      : run.results?.agent?.decisions ?? 0;
   const executed =
     typeof run.results?.executed === 'number'
       ? run.results.executed
@@ -97,8 +102,10 @@ function RunCard({
     typeof run.results?.notified === 'number'
       ? run.results.notified
       : parseInt(String(run.results?.notified || run.results?.agent?.notified || '0'), 10) || 0;
-  const errors = run.results?.errors || [];
-  const timeAgo = Math.floor((Date.now() - new Date(run.ran_at).getTime()) / 60000);
+  const errors = Array.isArray(run.results?.errors) ? run.results.errors : [];
+  const timeAgo = run.ran_at
+    ? Math.floor((Date.now() - new Date(run.ran_at).getTime()) / 60000)
+    : 0;
 
   const hasAction = executed > 0 || queued > 0 || notified > 0;
 
@@ -188,7 +195,23 @@ function RunCard({
               🔔 {notified} flagged
             </span>
           )}
-          {!hasAction && (
+          {!hasAction && decisionsCount > 0 && (
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 9,
+                letterSpacing: 1,
+                padding: '2px 8px',
+                borderRadius: 20,
+                background: '#3d506815',
+                border: '1px solid #3d506840',
+                color: '#7a8fa8',
+              }}
+            >
+              {decisionsCount} decision{decisionsCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          {!hasAction && decisionsCount === 0 && (
             <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#3d5068', letterSpacing: 1 }}>
               — No actions needed
             </span>
@@ -225,14 +248,16 @@ function RunCard({
 
       {expanded && (
         <div style={{ borderTop: '1px solid #1e2a3a', padding: '14px 18px' }}>
-          {decisions.length === 0 && (
+          {decisionsList.length === 0 && (
             <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#3d5068', letterSpacing: 1 }}>
-              No decisions recorded for this run
+              {decisionsCount > 0
+                ? `${decisionsCount} decisions recorded (summary only)`
+                : 'No decisions recorded for this run'}
             </div>
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {decisions.map((d, i) => {
+            {decisionsList.map((d, i) => {
               const config = ACTION_CONFIG[d.action] || ACTION_CONFIG.SKIP;
               const priColor =
                 PRIORITY_COLORS[d.priority as keyof typeof PRIORITY_COLORS] || '#3d5068';
@@ -356,10 +381,16 @@ export default function AgentPage() {
   const fetchRuns = async () => {
     try {
       const res = await fetch('/api/agent/runs');
-      const data = await res.json();
-      const nextRuns = data.runs || [];
+      let data: { runs?: AgentRun[] } = {};
+      try {
+        data = await res.json();
+      } catch {
+        setRuns([]);
+        return [];
+      }
+      const nextRuns = Array.isArray(data.runs) ? data.runs : [];
       setRuns(nextRuns);
-      return nextRuns as AgentRun[];
+      return nextRuns;
     } catch {
       return [];
     } finally {
@@ -379,22 +410,28 @@ export default function AgentPage() {
     setLastRunResult(null);
     try {
       const res = await fetch('/api/agent/run', { method: 'POST' });
-      const data = await res.json();
+      let data: Record<string, unknown> = {};
+      try {
+        data = await res.json();
+      } catch {
+        setLastRunResult('Failed to parse agent response');
+        return;
+      }
       if (data.success) {
         setLastRunResult(
-          `✓ Agent ran — ${data.executed} executed, ${data.decisions} decisions`
+          `✓ Agent ran — ${Number(data.executed) || 0} executed, ${Number(data.decisions) || 0} decisions`
         );
         setLiveResult({
-          executed: data.executed,
-          queued: data.queued,
-          notified: data.notified,
-          skipped: data.skipped ?? 0,
+          executed: Number(data.executed) || 0,
+          queued: Number(data.queued) || 0,
+          notified: Number(data.notified) || 0,
+          skipped: Number(data.skipped) || 0,
           decisions: [],
         });
         const nextRuns = await fetchRuns();
         if (nextRuns[0]?.id) setExpandedRun(nextRuns[0].id);
       } else {
-        setLastRunResult(`Error: ${data.error || 'Unknown error'}`);
+        setLastRunResult(`Error: ${String(data.error || 'Unknown error')}`);
       }
     } catch {
       setLastRunResult('Failed to run agent');
@@ -418,7 +455,13 @@ export default function AgentPage() {
     );
     return sum + (Number.isNaN(executed) ? 0 : executed);
   }, 0);
-  const totalQueued = runs.reduce((sum, r) => sum + (r.results?.queued || 0), 0);
+  const totalQueued = runs.reduce((sum, r) => {
+    const queued = parseInt(
+      String(r.results?.queued ?? r.results?.agent?.queued ?? '0'),
+      10
+    );
+    return sum + (Number.isNaN(queued) ? 0 : queued);
+  }, 0);
   const lastRun = runs[0];
   const minutesSinceLastRun = lastRun
     ? Math.floor((Date.now() - new Date(lastRun.ran_at).getTime()) / 60000)

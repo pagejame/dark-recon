@@ -561,18 +561,24 @@ Be selective — only include tickers with genuine actionable signals. Skip nois
       }
     }
 
-    const { error: insertError } = await supabase.from('scanner_results').insert({
-      scan_date: new Date().toISOString().split('T')[0],
-      scan_type: result.scan_type,
-      ticker,
-      company_name: result.company_name,
-      signal_strength: result.signal_strength,
-      signal_data: result.signal_data,
-      claude_thesis: result.claude_thesis,
-      conviction_score: result.conviction_score,
-      added_to_watchlist: result.added_to_watchlist,
-    });
-    if (insertError) console.error(insertError);
+    const { error: insertError } = await supabase.from('scanner_results').upsert(
+      {
+        scan_date: new Date().toISOString().split('T')[0],
+        scan_type: result.scan_type,
+        ticker,
+        company_name: result.company_name,
+        signal_strength: result.signal_strength,
+        signal_data: result.signal_data,
+        claude_thesis: result.claude_thesis,
+        conviction_score: result.conviction_score,
+        added_to_watchlist: result.added_to_watchlist,
+      },
+      {
+        onConflict: 'scan_date,ticker,scan_type',
+        ignoreDuplicates: true,
+      }
+    );
+    if (insertError) console.error('Scanner upsert error:', insertError.message);
 
     results.push(result);
   }

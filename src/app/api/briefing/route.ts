@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateMorningBriefing } from '@/lib/agents/briefing';
 import { getTodaysBriefing, saveBriefing, mapDbBriefingToResponse } from '@/lib/db/briefings';
 
+function fallbackBriefing() {
+  return {
+    date: new Date().toDateString(),
+    market_status: 'closed',
+    sentiment: 'neutral' as const,
+    briefing_text: 'Morning briefing temporarily unavailable. Macro data loading...',
+    top_signals: [] as string[],
+    key_levels: [] as { label: string; value: string; note: string }[],
+    generated_at: new Date().toISOString(),
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const refresh = request.nextUrl.searchParams.get('refresh') === 'true';
@@ -33,7 +45,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ...briefing, cache: 'MISS' });
   } catch (error) {
     console.error('Briefing route error:', error);
-    const message = error instanceof Error ? error.message : 'Briefing failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ ...fallbackBriefing(), cache: 'ERROR' });
   }
 }

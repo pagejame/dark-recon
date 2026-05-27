@@ -16,6 +16,10 @@ import type { MorningBriefing as MorningBriefingData } from '@/lib/agents/briefi
 const EARNINGS_WATCHLIST = ['NVDA', 'AMD', 'TSLA', 'META', 'AAPL', 'MSFT', 'AMZN', 'GOOGL'];
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
 
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 interface EarningsEvent {
   symbol: string;
   date: string;
@@ -92,7 +96,13 @@ interface AutonomousAgentRun {
       issue: string;
       rationale: string;
       ticker?: string;
-    }[];
+    }[] | number;
+    agent?: {
+      executed?: number;
+      queued?: number;
+      notified?: number;
+      decisions?: number;
+    };
   };
 }
 
@@ -165,14 +175,23 @@ export default function DashboardContent() {
     try {
       const url = refresh ? '/api/briefing?refresh=true' : '/api/briefing';
       const res = await fetch(url);
-      const data = await res.json();
-      if (!res.ok) {
+      let data: MorningBriefingData & { error?: string } = {} as MorningBriefingData & {
+        error?: string;
+      };
+      try {
+        data = await res.json();
+      } catch {
+        setBriefing(null);
+        setBriefingError('Briefing unavailable');
+        return;
+      }
+      if (!res.ok || data.error) {
         setBriefing(null);
         setBriefingError(data.error || 'Briefing failed');
         return;
       }
       setBriefing(data);
-      setBriefingLastRun(data.generated_at);
+      setBriefingLastRun(data.generated_at || null);
     } catch {
       setBriefing(null);
       setBriefingError('Briefing unavailable');
@@ -188,14 +207,21 @@ export default function DashboardContent() {
     setScanError(null);
     try {
       const res = await fetch(fresh ? '/api/scan?fresh=true' : '/api/scan');
-      const data = await res.json();
+      let data: { signals?: ScanResult[]; scanned_at?: string; error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        setSignals([]);
+        setScanError('Scanner offline');
+        return;
+      }
       if (!res.ok) {
         setSignals([]);
         setScanError(data.error || 'Scanner failed');
         return;
       }
-      setSignals(data.signals || []);
-      setScanLastRun(data.scanned_at);
+      setSignals(Array.isArray(data.signals) ? data.signals : []);
+      setScanLastRun(data.scanned_at || null);
     } catch {
       setSignals([]);
       setScanError('Scanner offline');
@@ -310,29 +336,42 @@ export default function DashboardContent() {
         fetch('/api/monitor/alerts'),
         fetch('/api/portfolio/news'),
       ]);
-      const alertsData = await alertsRes.json();
-      const newsData = await newsRes.json();
+      let alertsData: { alerts?: unknown[] } = {};
+      let newsData: { alerts?: unknown[] } = {};
+      try {
+        alertsData = await alertsRes.json();
+      } catch {
+        alertsData = {};
+      }
+      try {
+        newsData = await newsRes.json();
+      } catch {
+        newsData = {};
+      }
 
-      const monitorAlerts: PositionAlertItem[] = (alertsData.alerts || []).map(
-        (a: { id?: string; ticker: string; message: string; severity: string }) => ({
-          id: a.id,
-          ticker: a.ticker,
-          message: a.message,
-          severity: a.severity as PositionAlertItem['severity'],
-        })
-      );
+      const monitorAlerts: PositionAlertItem[] = asArray<{
+        id?: string;
+        ticker: string;
+        message: string;
+        severity: string;
+      }>(alertsData.alerts).map((a) => ({
+        id: a.id,
+        ticker: a.ticker,
+        message: a.message,
+        severity: a.severity as PositionAlertItem['severity'],
+      }));
 
-      const highUrgency = (newsData.alerts || []).filter(
-        (a: { urgency: string }) => a.urgency === 'high'
-      );
+      const highUrgency = asArray<{ urgency: string; ticker?: string; headline?: string; sentiment?: string }>(
+        newsData.alerts
+      ).filter((a) => a.urgency === 'high');
 
-      const newsAlerts: PositionAlertItem[] = highUrgency.map(
-        (a: { ticker: string; headline: string; sentiment: string }) => ({
-          ticker: a.ticker,
+      const newsAlerts: PositionAlertItem[] = highUrgency
+        .filter((a) => a.ticker && a.headline)
+        .map((a) => ({
+          ticker: a.ticker!,
           message: `📰 ${a.ticker}: ${a.headline}`,
           severity: a.sentiment === 'negative' ? 'critical' : 'warning',
-        })
-      );
+        }));
 
       setPositionAlerts([...monitorAlerts, ...newsAlerts]);
     } catch {
@@ -527,6 +566,10 @@ export default function DashboardContent() {
   ];
 
   const spySignal = signals.find((s) => s.ticker === 'SPY');
+  const spyDisplay =
+    spySignal?.summary != null
+      ? `SPY · ${String(spySignal.summary).slice(0, 30)}…`
+      : undefined;
 
   const autopilotActionColors: Record<string, { color: string; bg: string; border: string }> = {
     aggressive: { color: '#00ff88', bg: '#00ff8815', border: '#00ff8840' },
@@ -668,7 +711,7 @@ export default function DashboardContent() {
         </div>
       )}
 
-      <MarketStatusBar briefing={briefing} earnings={earnings} spyDisplay={spySignal ? `SPY · ${spySignal.summary.slice(0, 30)}…` : undefined} />
+      <MarketStatusBar briefing={briefing} earnings={earnings} spyDisplay={spyDisplay} />
 
       {preMarketMovers.length > 0 && (
         <div
@@ -717,10 +760,10 @@ export default function DashboardContent() {
                     {mover.ticker}
                   </span>
                   <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#e8edf5' }}>
-                    ${mover.price.toFixed(2)}
+                    ${Number(mover.price ?? 0).toFixed(2)}
                   </span>
                   <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#00ff88' }}>
-                    ▲{Math.abs(mover.change_pct).toFixed(2)}%
+                    ▲{Math.abs(Number(mover.change_pct ?? 0)).toFixed(2)}%
                   </span>
                 </div>
               ))}
@@ -759,10 +802,10 @@ export default function DashboardContent() {
                     {mover.ticker}
                   </span>
                   <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#e8edf5' }}>
-                    ${mover.price.toFixed(2)}
+                    ${Number(mover.price ?? 0).toFixed(2)}
                   </span>
                   <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#ff3d5a' }}>
-                    ▼{Math.abs(mover.change_pct).toFixed(2)}%
+                    ▼{Math.abs(Number(mover.change_pct ?? 0)).toFixed(2)}%
                   </span>
                 </div>
               ))}
@@ -997,7 +1040,7 @@ export default function DashboardContent() {
                   borderRadius: 20,
                 }}
               >
-                {autopilot.overall_action.toUpperCase()}
+                {autopilot.overall_action?.toUpperCase() ?? 'UNKNOWN'}
               </span>
             )}
           </div>
@@ -1115,9 +1158,10 @@ export default function DashboardContent() {
                     AUTONOMOUS AGENT
                   </div>
                   <div style={{ fontSize: 13, color: '#e8edf5' }}>
-                    {agentStatus.results?.executed || 0} executed ·{' '}
-                    {agentStatus.results?.queued || 0} queued ·{' '}
-                    {agentStatus.results?.notified || 0} flagged
+                    {agentStatus.results?.executed ?? agentStatus.results?.agent?.executed ?? 0}{' '}
+                    executed · {agentStatus.results?.queued ?? agentStatus.results?.agent?.queued ?? 0}{' '}
+                    queued ·{' '}
+                    {agentStatus.results?.notified ?? agentStatus.results?.agent?.notified ?? 0} flagged
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -1146,7 +1190,10 @@ export default function DashboardContent() {
                 </div>
               </div>
 
-              {(agentStatus.results?.decisions || [])
+              {asArray<{
+                action: string;
+                issue: string;
+              }>(agentStatus.results?.decisions)
                 .filter((d) => d.action !== 'SKIP')
                 .slice(0, 2)
                 .map((d, i) => (
