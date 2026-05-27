@@ -4,6 +4,17 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 export const maxDuration = 55;
 
+function isMarketHours(): boolean {
+  const now = new Date();
+  const hour = now.getUTCHours();
+  const minute = now.getUTCMinutes();
+  const day = now.getUTCDay();
+  if (day < 1 || day > 5) return false;
+  const totalMinutes = hour * 60 + minute;
+  // 9:30AM - 4:30PM ET = 13:30 - 20:30 UTC
+  return totalMinutes >= 13 * 60 + 30 && totalMinutes < 20 * 60 + 30;
+}
+
 async function logCronRun(results: Record<string, unknown>) {
   try {
     const supabase = createAdminClient();
@@ -19,6 +30,14 @@ async function logCronRun(results: Record<string, unknown>) {
 }
 
 export async function GET(request: NextRequest) {
+  if (!isMarketHours()) {
+    return NextResponse.json({
+      success: true,
+      skipped: true,
+      reason: 'Outside market hours',
+    });
+  }
+
   const authHeader = request.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

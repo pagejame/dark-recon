@@ -111,6 +111,8 @@ async function gatherStatus(
     freshData.equity = equity;
     freshData.positions = positions;
     freshData.day_pnl = dayPnL;
+    freshData.position_count = (positions as unknown[]).length;
+    freshData.over_capacity = (positions as unknown[]).length > 5;
 
     try {
       const todayStart = `${new Date().toISOString().split('T')[0]}T00:00:00Z`;
@@ -159,7 +161,7 @@ ${(orders as { symbol: string; side: string; qty: string; limit_price?: string }
 ${(confirmedToday || [])
   .map(
     (s: { ticker: string; strength: string; source: string; notes?: string }) =>
-      `  ${s.ticker} [${s.strength.toUpperCase()}]: ${s.source} — ${s.notes?.slice(0, 80) || ''}`
+      `  ${s.ticker} [${s.strength.toUpperCase()}] (${s.source?.split(' ')[0]}): ${(s.notes || '').slice(0, 60)}`
   )
   .join('\n')}`);
       freshData.confirmed_signals = confirmedToday;
@@ -765,14 +767,20 @@ export async function runAutonomousAgent(): Promise<AgentRunResult> {
     await new Promise((r) => setTimeout(r, 500));
   }
 
+  const openPositions = ((fresh_data.positions as unknown[]) || []).length;
+  const positionCount = (fresh_data.position_count as number) ?? openPositions;
+  const overCapacity = (fresh_data.over_capacity as boolean) ?? positionCount > 5;
+
   const riskControlsSection = circuitBreaker
     ? `RISK CONTROLS:
 Daily P&L: ${circuitBreaker.daily_pnl_pct >= 0 ? '+' : ''}${circuitBreaker.daily_pnl_pct.toFixed(2)}% ($${circuitBreaker.daily_pnl_dollar.toFixed(0)})
 VIX: ${circuitBreaker.vix_level.toFixed(1)} — Market: ${circuitBreaker.market_condition.toUpperCase()}
 Trades today: ${circuitBreaker.trade_count_today}/100
+Positions: ${positionCount}/5${overCapacity ? ' ⚠️ OVER CAPACITY — close weakest before opening new trades' : ''}
 ${circuitBreaker.market_condition !== 'normal' ? `⚠️ ELEVATED VOLATILITY: Min conviction raised to ${effectiveMinConviction}/10` : 'Risk controls: Normal'}
 Circuit breaker: ${circuitBreaker.triggered ? `TRIGGERED — ${circuitBreaker.reason}` : 'OFF'}`
-    : '';
+    : `RISK CONTROLS:
+Positions: ${positionCount}/5${overCapacity ? ' ⚠️ OVER CAPACITY — close weakest before opening new trades' : ''}`;
 
   const status = riskControlsSection ? `${riskControlsSection}\n\n${rawStatus}` : rawStatus;
   fresh_data.circuit_breaker = circuitBreaker;
@@ -837,7 +845,6 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
 
   const tradesToday = (fresh_data.trades_today as number) || 0;
   const equity = (fresh_data.equity as number) || 100000;
-  const openPositions = ((fresh_data.positions as unknown[]) || []).length;
   const tradesRemaining = autonomy.daily_trade_limit - tradesToday;
 
   const confirmedSignalsList =
@@ -857,7 +864,7 @@ If market regime is RISK_ON, favor growth/momentum names with higher conviction.
               (signal.strength === 'high' ? 9 : signal.strength === 'medium' ? 7 : 5);
             const reason = String(
               signal.best_reason || signal.notes || signal.source || ''
-            ).slice(0, 100);
+            ).slice(0, 50);
             return `  ${signal.ticker} [${score}/10]: ${reason}`;
           })
           .join('\n')
@@ -889,8 +896,14 @@ DAY TRADING MODE — Decisions must be fast and decisive:
       ? `
 SWING / INVESTING MODE — Full Autonomy Active:
 - You have ${autonomy.daily_trade_limit} trades/day limit. Used: ${tradesToday}. Remaining: ${tradesRemaining}
-- Open positions: ${openPositions}/5. Max 5 concurrent at 8% each = $${Math.round(equity * 0.08).toLocaleString()} per trade
+- Open positions: ${positionCount}/5. Max 5 concurrent at 8% each = $${Math.round(equity * 0.08).toLocaleString()} per trade
 - Profit targets: +10% partial, +20% full, +30% runner. Stop: -7%
+
+CAPACITY RULE — CRITICAL:
+Max 5 concurrent positions. Currently at ${positionCount}/5.
+If over capacity: AUTO_EXECUTE close weakest position using GET /api/alpaca/positions/{TICKER}
+Weakest = lowest P&L + no fresh confirmed signal.
+Do NOT open new positions while over capacity — close one first.
 
 CRITICAL EXIT RULES — execute these immediately:
 - TRAILING STOP: Position was profitable then gave back gains → close to protect
@@ -931,7 +944,7 @@ This is PRIORITY — stale orders block capital and prevent fresh trades.
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 800,
+    max_tokens: 600,
     messages: [
       {
         role: 'user',
@@ -952,6 +965,7 @@ AVAILABLE_ACTIONS:
 - Dismiss triggered price alerts: GET /api/alerts/dismiss
 - Check and update alerts: GET /api/alerts/check
 - Cancel all stale open orders: GET /api/alpaca/orders/cancel-all
+- Close specific position: GET /api/alpaca/positions/TICKER (replace TICKER with symbol)
 - Execute trade entry: POST /api/trade/execute with body { ticker, side: "buy"|"sell", conviction, rationale }
 
 DECISION RULES:
