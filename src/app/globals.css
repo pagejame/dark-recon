@@ -107,13 +107,14 @@ body {
   .main-content {
     padding-bottom: 0;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
 /* Mobile page utilities */
 .dr-page {
   width: 100%;
-  max-width: 1100px;
+  max-width: min(1100px, 100%);
   margin: 0 auto;
   min-width: 0;
   box-sizing: border-box;
