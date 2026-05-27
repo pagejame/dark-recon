@@ -8,7 +8,7 @@ import type { SectorRotation } from '@/lib/services/sector-rotation';
 import type { MomentumStock } from '@/lib/services/momentum-screener';
 import type { FearGreedData, EconomicEvent } from '@/lib/api/market-sentiment';
 import type { InsiderTrade } from '@/lib/api/fmp';
-import type { TwitterSignal } from '@/lib/api/twitter-intel';
+import type { NewsSignal } from '@/lib/api/news-feeds';
 
 interface ScannerResult {
   ticker: string;
@@ -31,7 +31,7 @@ interface ScanResponse {
   momentum_leaders?: MomentumStock[];
   macro_snapshot?: MacroSnapshot;
   analyst_picks?: AnalystData[];
-  twitter_signals?: TwitterSignal[];
+  news_signals?: NewsSignal[];
   scanned_at?: string;
   cached?: boolean;
 }
@@ -66,7 +66,7 @@ const SCAN_TYPE_LABELS: Record<string, string> = {
   unusual_volume: 'UNUSUAL VOLUME',
   momentum: 'MOMENTUM',
   multi_signal: 'MULTI SIGNAL',
-  twitter_intel: 'TWITTER INTEL',
+  news_feed: 'BREAKING NEWS',
 };
 
 function scanTypeLabel(type: string) {
@@ -436,12 +436,12 @@ export default function MarketScannerPage() {
             </div>
           )}
 
-          {scanData?.twitter_signals && scanData.twitter_signals.length > 0 && (
+          {scanData?.news_signals && scanData.news_signals.length > 0 && (
             <div
               style={{
                 background: '#111620',
                 border: '1px solid #1e2a3a',
-                borderLeft: '3px solid #1d9bf0',
+                borderLeft: '3px solid #ff6b35',
                 borderRadius: 10,
                 padding: 20,
                 marginBottom: 16,
@@ -452,14 +452,24 @@ export default function MarketScannerPage() {
                   fontFamily: 'monospace',
                   fontSize: 9,
                   letterSpacing: 3,
-                  color: '#1d9bf0',
+                  color: '#ff6b35',
                   marginBottom: 14,
                 }}
               >
-                𝕏 TWITTER INTELLIGENCE
+                📡 BREAKING NEWS INTELLIGENCE
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {scanData.twitter_signals.slice(0, 5).map((signal, i) => (
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 8,
+                  color: '#3d5068',
+                  marginBottom: 10,
+                }}
+              >
+                NASDAQ TRADER · BENZINGA · YAHOO FINANCE
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {scanData.news_signals.slice(0, 5).map((signal, i) => (
                   <div
                     key={i}
                     style={{
@@ -477,9 +487,9 @@ export default function MarketScannerPage() {
                       }}
                     >
                       <span
-                        style={{ fontFamily: 'monospace', fontSize: 10, color: '#1d9bf0' }}
+                        style={{ fontFamily: 'monospace', fontSize: 9, color: '#ff6b35' }}
                       >
-                        @{signal.account}
+                        {signal.source.toUpperCase()}
                       </span>
                       <span
                         style={{

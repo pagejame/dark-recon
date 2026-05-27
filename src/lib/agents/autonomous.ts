@@ -375,27 +375,25 @@ ${unprotected.join(', ')} — stops must be created immediately`);
       freshData.intelligence_signals = highStrength;
     });
 
-    await runTier2('Twitter intelligence', async () => {
-      const { scanTwitterIntelligence, saveTwitterSignals } = await import(
-        '@/lib/api/twitter-intel'
-      );
-      const twitterSignals = await Promise.race([
-        scanTwitterIntelligence(),
-        new Promise<Awaited<ReturnType<typeof scanTwitterIntelligence>>>((resolve) =>
+    await runTier2('News feed intelligence', async () => {
+      const { scanNewsFeeds, saveNewsSignals } = await import('@/lib/api/news-feeds');
+      const newsSignals = await Promise.race([
+        scanNewsFeeds(),
+        new Promise<Awaited<ReturnType<typeof scanNewsFeeds>>>((resolve) =>
           setTimeout(() => resolve([]), 10000)
         ),
-      ]);
+      ]).catch(() => []);
 
-      if (twitterSignals.length > 0) {
-        await saveTwitterSignals(twitterSignals);
+      if (newsSignals.length > 0) {
+        await saveNewsSignals(newsSignals);
         tier2Sections.push(
-          `TWITTER INTELLIGENCE (live):
-${twitterSignals
-  .slice(0, 5)
-  .map((s) => `  @${s.account} [${s.strength}]: ${s.summary}`)
+          `NEWS FEED INTELLIGENCE (NASDAQ/Benzinga/Yahoo):
+${newsSignals
+  .slice(0, 4)
+  .map((s) => `  [${s.source}] ${s.tickers.join(',')} — ${s.summary.slice(0, 60)}`)
   .join('\n')}`
         );
-        freshData.twitter_signals = twitterSignals;
+        freshData.news_signals = newsSignals;
       }
     });
 

@@ -21,7 +21,7 @@ import { runMomentumScreener, saveMomentumResults } from '@/lib/services/momentu
 import { getSectorRotation } from '@/lib/services/sector-rotation';
 import { getFearGreedIndex, getUpcomingEconomicEvents } from '@/lib/api/market-sentiment';
 import { getRecentInsiderTrades, getUpcomingIPOs } from '@/lib/api/fmp';
-import { scanTwitterIntelligence, saveTwitterSignals } from '@/lib/api/twitter-intel';
+import { scanNewsFeeds, saveNewsSignals } from '@/lib/api/news-feeds';
 
 export const maxDuration = 120;
 
@@ -284,17 +284,17 @@ export async function GET(request: NextRequest) {
         results.ipos = `${ipos.length} upcoming IPOs`;
       })
       .catch(() => {}),
-    scanTwitterIntelligence()
+    scanNewsFeeds()
       .then(async (signals) => {
         if (signals.length > 0) {
-          await saveTwitterSignals(signals);
-          results.twitter_intel = `${signals.length} signals from ${[...new Set(signals.map((s) => s.account))].length} accounts`;
+          await saveNewsSignals(signals);
+          results.news_feeds = `${signals.length} signals from NASDAQ/Benzinga/Yahoo`;
         } else {
-          results.twitter_intel = 'No actionable signals';
+          results.news_feeds = 'No actionable news signals';
         }
       })
       .catch(() => {
-        results.twitter_intel = 'Unavailable';
+        results.news_feeds = 'News feeds unavailable';
       }),
   ]);
 
