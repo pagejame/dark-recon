@@ -170,6 +170,15 @@ Return ONLY valid JSON:
       entry_note: autoThesis.entry_note || null,
       signal_sources: sourcesArray,
       auto_generated: true,
+      thesis_data: {
+        thesis: autoThesis.thesis,
+        catalyst: autoThesis.catalyst,
+        risk_note: autoThesis.risk_note,
+        entry_note: autoThesis.entry_note,
+        signal_summary: signalSummary,
+        sources: sourcesArray,
+      },
+      generated_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
     });
     if (insertError) {

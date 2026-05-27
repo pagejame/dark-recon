@@ -126,10 +126,20 @@ async function fetchTickerNews(
 }
 
 export async function scanPositionNews(): Promise<PositionNewsAlert[]> {
-  const positions = await getPositions();
-  if (!positions || positions.length === 0) return [];
+  let positions: { symbol: string }[];
+  try {
+    positions = (await getPositions()) as { symbol: string }[];
+  } catch (e) {
+    console.error(
+      'Position news: failed to fetch Alpaca positions:',
+      e instanceof Error ? e.message : e
+    );
+    return [];
+  }
 
-  const tickers = (positions as { symbol: string }[])
+  if (!Array.isArray(positions) || positions.length === 0) return [];
+
+  const tickers = positions
     .map((p) => {
       const symbol = p.symbol;
       return OCC_SYMBOL.test(symbol) ? symbol.replace(/\d.*/, '') : symbol;
