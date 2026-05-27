@@ -91,7 +91,9 @@ async function gatherStatus(
   const tier2Sections: string[] = [];
   const freshData: Record<string, unknown> = { tier, run_count };
 
-  // TIER 1 — Every run (live data, fast)
+  // TIER 1 — Every run (live data, fast). Sections assembled in priority order at end.
+  let portfolioSection: string | null = null;
+
   try {
     const [positions, account, orders] = await Promise.all([
       getPositions(),
@@ -122,7 +124,7 @@ async function gatherStatus(
       freshData.trades_today = 0;
     }
 
-    tier1Sections.push(`LIVE PORTFOLIO (Tier 1 — refreshed now):
+    portfolioSection = `LIVE PORTFOLIO (Tier 1 — refreshed now):
 Equity: $${equity.toLocaleString()} | Day P&L: ${dayPnL >= 0 ? '+' : ''}$${dayPnL.toFixed(2)} (${dayPnLPct >= 0 ? '+' : ''}${dayPnLPct.toFixed(2)}%)
 Open positions: ${(positions as unknown[]).length}
 ${(positions as { symbol: string; unrealized_plpc?: string; market_value?: string }[])
@@ -134,9 +136,69 @@ ${(positions as { symbol: string; unrealized_plpc?: string; market_value?: strin
 Pending orders: ${(orders as unknown[]).length}
 ${(orders as { symbol: string; side: string; qty: string; limit_price?: string }[])
   .map((o) => `  ${o.symbol}: ${o.side} ${o.qty} @ $${o.limit_price || 'market'}`)
-  .join('\n')}`);
+  .join('\n')}`;
   } catch {
-    tier1Sections.push('LIVE PORTFOLIO: Fetch failed');
+    portfolioSection = 'LIVE PORTFOLIO: Fetch failed';
+  }
+
+  const prioritySections: string[] = [];
+  const alertSections: string[] = [];
+
+  try {
+    const { data: confirmedToday } = await supabase
+      .from('signals')
+      .select('ticker, signal_type, strength, source, notes')
+      .eq('status', 'pending')
+      .in('strength', ['high', 'medium'])
+      .gte('created_at', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if ((confirmedToday || []).length > 0) {
+      prioritySections.push(`CONFIRMED SIGNALS — READY TO TRADE:
+${(confirmedToday || [])
+  .map(
+    (s: { ticker: string; strength: string; source: string; notes?: string }) =>
+      `  ${s.ticker} [${s.strength.toUpperCase()}]: ${s.source} — ${s.notes?.slice(0, 80) || ''}`
+  )
+  .join('\n')}`);
+      freshData.confirmed_signals = confirmedToday;
+    }
+  } catch {
+    /* skip */
+  }
+
+  try {
+    const { data: queue } = await supabase
+      .from('trade_queue')
+      .select('ticker, instrument_type, conviction_score, expires_at, status')
+      .in('status', ['pending', 'executed'])
+      .order('queued_at', { ascending: false })
+      .limit(10);
+
+    const pending = (queue || []).filter((t: { status: string }) => t.status === 'pending');
+    const executedToday = (queue || []).filter((t: { status: string; expires_at: string }) => {
+      if (t.status !== 'executed') return false;
+      return new Date(t.expires_at).toDateString() === new Date().toDateString();
+    });
+
+    prioritySections.push(`TRADE QUEUE:
+Pending approval: ${pending.length}
+${pending
+  .map(
+    (t: { ticker: string; instrument_type: string; conviction_score: number }) =>
+      `  ${t.ticker} ${t.instrument_type} — conviction ${t.conviction_score}/10`
+  )
+  .join('\n')}
+Executed today: ${executedToday.length}`);
+  } catch {
+    /* skip */
+  }
+
+  if (portfolioSection) {
+    tier1Sections.push(...prioritySections, portfolioSection);
+  } else {
+    tier1Sections.push(...prioritySections);
   }
 
   try {
@@ -153,7 +215,7 @@ ${(orders as { symbol: string; side: string; qty: string; limit_price?: string }
     );
 
     if (highConviction.length > 0) {
-      tier1Sections.push(`RECENT HIGH CONVICTION SIGNALS (last 2h):
+      alertSections.push(`RECENT HIGH CONVICTION SIGNALS (last 2h):
 ${highConviction
   .map(
     (s: { ticker: string; signal_type: string; status: string }) =>
@@ -161,30 +223,6 @@ ${highConviction
   )
   .join('\n')}`);
       freshData.recent_signals = highConviction;
-    }
-  } catch {
-    /* skip */
-  }
-
-  try {
-    const { data: confirmedToday } = await supabase
-      .from('signals')
-      .select('ticker, signal_type, strength, source, notes')
-      .eq('status', 'pending')
-      .in('strength', ['high', 'medium'])
-      .gte('created_at', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString())
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    if ((confirmedToday || []).length > 0) {
-      tier1Sections.push(`CONFIRMED SIGNALS — READY TO TRADE:
-${(confirmedToday || [])
-  .map(
-    (s: { ticker: string; strength: string; source: string; notes?: string }) =>
-      `  ${s.ticker} [${s.strength.toUpperCase()}]: ${s.source} — ${s.notes?.slice(0, 80) || ''}`
-  )
-  .join('\n')}`);
-      freshData.confirmed_signals = confirmedToday;
     }
   } catch {
     /* skip */
@@ -207,7 +245,7 @@ ${(confirmedToday || [])
       .order('created_at', { ascending: false });
 
     if ((intradaySignals || []).length > 0) {
-      tier1Sections.push(`LIVE INTRADAY SETUPS (last 5 min):
+      alertSections.push(`LIVE INTRADAY SETUPS (last 5 min):
 ${(intradaySignals || [])
   .map(
     (s: { ticker: string; signal_type: string; notes?: string }) =>
@@ -235,7 +273,7 @@ ${(intradaySignals || [])
       (a: { status: string }) => a.status === 'triggered'
     );
     if (triggered.length > 0) {
-      tier1Sections.push(`TRIGGERED PRICE ALERTS (action needed):
+      alertSections.push(`TRIGGERED PRICE ALERTS (action needed):
 ${triggered
   .map(
     (a: { ticker: string; condition: string; target_price: number }) =>
@@ -248,7 +286,7 @@ ${triggered
       (a: { severity: string }) => a.severity === 'critical'
     );
     if (criticalAlerts.length > 0) {
-      tier1Sections.push(`CRITICAL POSITION ALERTS:
+      alertSections.push(`CRITICAL POSITION ALERTS:
 ${criticalAlerts
   .map((a: { ticker: string; message: string }) => `  ${a.ticker}: ${a.message}`)
   .join('\n')}`);
@@ -274,7 +312,7 @@ ${criticalAlerts
       .map((p) => p.symbol);
 
     if (unprotected.length > 0) {
-      tier1Sections.push(`UNPROTECTED POSITIONS (no stop loss):
+      alertSections.push(`UNPROTECTED POSITIONS (no stop loss):
 ${unprotected.join(', ')} — stops must be created immediately`);
       freshData.unprotected = unprotected;
     }
@@ -282,32 +320,7 @@ ${unprotected.join(', ')} — stops must be created immediately`);
     /* skip */
   }
 
-  try {
-    const { data: queue } = await supabase
-      .from('trade_queue')
-      .select('ticker, instrument_type, conviction_score, expires_at, status')
-      .in('status', ['pending', 'executed'])
-      .order('queued_at', { ascending: false })
-      .limit(10);
-
-    const pending = (queue || []).filter((t: { status: string }) => t.status === 'pending');
-    const executedToday = (queue || []).filter((t: { status: string; expires_at: string }) => {
-      if (t.status !== 'executed') return false;
-      return new Date(t.expires_at).toDateString() === new Date().toDateString();
-    });
-
-    tier1Sections.push(`TRADE QUEUE:
-Pending approval: ${pending.length}
-${pending
-  .map(
-    (t: { ticker: string; instrument_type: string; conviction_score: number }) =>
-      `  ${t.ticker} ${t.instrument_type} — conviction ${t.conviction_score}/10`
-  )
-  .join('\n')}
-Executed today: ${executedToday.length}`);
-  } catch {
-    /* skip */
-  }
+  tier1Sections.push(...alertSections);
 
   // TIER 2 — Every 30 minutes (full intelligence pipeline, max 6 ops)
   if (tier >= 2) {
@@ -624,10 +637,14 @@ ${twitterSignals
   }
 
   const tier1Status = tier1Sections.join('\n\n');
-  const tier1Capped =
-    tier1Status.length > 3000
-      ? `${tier1Status.slice(0, 3000)}\n[TIER 1 TRUNCATED]`
-      : tier1Status;
+  let tier1Capped: string;
+  if (tier1Status.length > 3000) {
+    const cutPoint = tier1Status.lastIndexOf('\n\n', 3000);
+    const safePoint = cutPoint > 1000 ? cutPoint : 3000;
+    tier1Capped = `${tier1Status.slice(0, safePoint)}\n\n[ADDITIONAL DATA TRUNCATED]`;
+  } else {
+    tier1Capped = tier1Status;
+  }
 
   const tier2Status = tier2Sections.join('\n');
   const tier2Capped =
