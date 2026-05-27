@@ -195,6 +195,32 @@ Executed today: ${executedToday.length}`);
     /* skip */
   }
 
+  try {
+    const { evaluateExitLogic } = await import('@/lib/services/exit-logic');
+    const exitSignals = await evaluateExitLogic();
+    const immediateExits = exitSignals.filter((s) => s.urgency === 'immediate');
+
+    if (immediateExits.length > 0) {
+      prioritySections.unshift(`EXIT SIGNALS — ACTION REQUIRED:
+${immediateExits
+  .map(
+    (s) =>
+      `  ${s.ticker} [${s.exit_type.toUpperCase()}]: ${s.reason} → ${s.action.replace(/_/g, ' ').toUpperCase()}`
+  )
+  .join('\n')}`);
+      freshData.exit_signals = immediateExits;
+    }
+
+    const monitorExits = exitSignals.filter((s) => s.urgency === 'monitor');
+    if (monitorExits.length > 0) {
+      prioritySections.push(`POSITIONS TO MONITOR (consider exiting):
+${monitorExits.map((s) => `  ${s.ticker}: ${s.reason}`).join('\n')}`);
+      freshData.monitor_exit_signals = monitorExits;
+    }
+  } catch {
+    /* skip */
+  }
+
   if (portfolioSection) {
     tier1Sections.push(...prioritySections, portfolioSection);
   } else {
@@ -865,6 +891,14 @@ SWING / INVESTING MODE — Full Autonomy Active:
 - You have ${autonomy.daily_trade_limit} trades/day limit. Used: ${tradesToday}. Remaining: ${tradesRemaining}
 - Open positions: ${openPositions}/5. Max 5 concurrent at 8% each = $${Math.round(equity * 0.08).toLocaleString()} per trade
 - Profit targets: +10% partial, +20% full, +30% runner. Stop: -7%
+
+CRITICAL EXIT RULES — execute these immediately:
+- TRAILING STOP: Position was profitable then gave back gains → close to protect
+- INTRADAY REVERSAL: Down today AND overall negative → no reason to hold, exit
+- MOMENTUM LOSS: Was up today, now reversing → exit before gains evaporate
+- DEAD MONEY: Held 3+ days with no progress → free up capital for better trades
+- THESIS BREAK: Buy thesis flipped bearish → exit, reason to hold is gone
+- When you see EXIT SIGNALS above → AUTO_EXECUTE the close, do not hold
 
 CRITICAL EXECUTION RULE — READ THIS FIRST:
 If you see confirmed signals (conviction ≥ 8) AND open positions < 5 AND trades remaining > 0:

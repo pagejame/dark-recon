@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runPositionMonitor } from '@/lib/agents/position-monitor';
+import { runExitLogic } from '@/lib/services/exit-logic';
 import { runAutoClose } from '@/lib/services/auto-close';
 import { sendAlertEscalationEmail } from '@/lib/services/alert-escalation';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -14,6 +15,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await runPositionMonitor();
+
+    let exitActions = 0;
+    try {
+      const exitResults = await runExitLogic();
+      exitActions = exitResults.filter((s) => s.urgency === 'immediate').length;
+      if (exitActions > 0) {
+        console.log('Exit logic actions:', exitActions);
+      }
+    } catch (e) {
+      console.error('Exit logic error (non-fatal):', e);
+    }
 
     try {
       const closeResults = await runAutoClose();
@@ -48,6 +60,7 @@ export async function GET(request: NextRequest) {
       results: {
         alerts_fired: result.alerts_fired,
         positions_checked: result.positions_checked,
+        exit_actions: exitActions,
       },
       ran_at: new Date().toISOString(),
     });

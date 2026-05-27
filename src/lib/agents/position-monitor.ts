@@ -1,9 +1,17 @@
 import { getPositions } from '@/lib/api/alpaca';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { evaluateExitLogic, type ExitSignal } from '@/lib/services/exit-logic';
 
 export interface PositionAlert {
   ticker: string;
-  alert_type: 'stop_loss' | 'take_profit' | 'trailing_stop' | 'time_decay' | 'drawdown_warning';
+  alert_type:
+    | 'stop_loss'
+    | 'take_profit'
+    | 'trailing_stop'
+    | 'time_decay'
+    | 'drawdown_warning'
+    | 'momentum_loss'
+    | 'thesis_break';
   message: string;
   severity: 'critical' | 'warning' | 'info';
   current_price: number;
@@ -24,6 +32,35 @@ interface StopAlertRow {
 }
 
 const OCC_SYMBOL = /^[A-Z]{1,6}\d{6}[CP]\d{8}$/;
+
+function exitSignalToAlert(signal: ExitSignal): PositionAlert {
+  const alertTypeMap: Record<ExitSignal['exit_type'], PositionAlert['alert_type']> = {
+    trailing_stop: 'trailing_stop',
+    momentum_loss: 'momentum_loss',
+    time_stop: 'time_decay',
+    thesis_break: 'thesis_break',
+    intraday_reversal: 'drawdown_warning',
+  };
+
+  const severity =
+    signal.urgency === 'immediate'
+      ? 'critical'
+      : signal.exit_type === 'time_stop'
+        ? 'warning'
+        : 'warning';
+
+  const actionLabel =
+    signal.action === 'close_half' ? 'Close 50%' : 'Close full position';
+
+  return {
+    ticker: signal.ticker,
+    alert_type: alertTypeMap[signal.exit_type],
+    message: `🚨 EXIT [${signal.exit_type.toUpperCase()}] — ${signal.ticker}: ${signal.reason} → ${actionLabel}`,
+    severity,
+    current_price: signal.current_price,
+    position_pnl_pct: signal.pnl_pct,
+  };
+}
 
 export async function runPositionMonitor(): Promise<{
   alerts_fired: number;
@@ -116,6 +153,15 @@ export async function runPositionMonitor(): Promise<{
         }
       }
     }
+  }
+
+  try {
+    const exitSignals = await evaluateExitLogic();
+    for (const signal of exitSignals) {
+      alerts.push(exitSignalToAlert(signal));
+    }
+  } catch (e) {
+    console.error('Exit logic evaluation error (non-fatal):', e);
   }
 
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();

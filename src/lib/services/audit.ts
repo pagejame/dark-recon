@@ -18,12 +18,19 @@ export type AuditEventType =
   | 'price_alert_created'
   | 'position_opened'
   | 'position_closed'
+  | 'position_peak_pnl'
   | 'site_scan_run'
   | 'task_executed'
   | 'manual_override'
   | 'rebalance_triggered'
   | 'earnings_play_queued'
-  | 'system_health_checked';
+  | 'system_health_checked'
+  | 'circuit_breaker_triggered'
+  | 'trading_mode_changed'
+  | 'eod_force_close'
+  | 'profit_target_hit'
+  | 'stop_loss_cut'
+  | 'trailing_stop_updated';
 
 export interface AuditEntry {
   event_type: AuditEventType;
