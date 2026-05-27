@@ -81,7 +81,7 @@ export default function LaunchPage() {
     result?.overall === 'pass' ? '#00ff88' : result?.overall === 'warn' ? '#ffd700' : '#ff3d5a';
 
   return (
-    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
+    <div className="dr-page dr-page-tight">
       <div style={{ marginBottom: 32 }}>
         <div
           style={{

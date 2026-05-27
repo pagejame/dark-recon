@@ -468,7 +468,7 @@ export default function AgentPage() {
     : null;
 
   return (
-    <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
+    <div className="dr-page dr-page-narrow">
       <div style={{ marginBottom: 28 }}>
         <div
           style={{
@@ -494,7 +494,7 @@ export default function AgentPage() {
             <h1
               style={{
                 fontFamily: 'Syne, sans-serif',
-                fontSize: 24,
+                fontSize: 'clamp(20px, 5vw, 32px)',
                 fontWeight: 800,
                 color: '#e8edf5',
                 margin: 0,
@@ -502,7 +502,7 @@ export default function AgentPage() {
             >
               Autonomous Agent
             </h1>
-            <div style={{ fontSize: 13, color: '#7a8fa8', marginTop: 4 }}>
+            <div style={{ fontSize: 'clamp(11px, 3vw, 14px)', color: '#7a8fa8', marginTop: 4 }}>
               Every decision, every action, every rationale — full transparency
             </div>
           </div>

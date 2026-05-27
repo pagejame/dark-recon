@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface TickerItem {
   ticker: string;
@@ -22,6 +23,11 @@ export default function TickerTape() {
   const [items, setItems] = useState<TickerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+  const tapeHeight = isMobile ? 28 : 32;
+  const labelSize = isMobile ? 9 : 10;
+  const priceSize = isMobile ? 10 : 11;
+  const changeSize = isMobile ? 8 : 9;
 
   const fetchTicker = async () => {
     try {
@@ -47,7 +53,7 @@ export default function TickerTape() {
     return (
       <div
         style={{
-          height: 32,
+          height: tapeHeight,
           background: '#080a0f',
           borderBottom: '1px solid #1e2a3a',
           display: 'flex',
@@ -59,7 +65,7 @@ export default function TickerTape() {
         <span
           style={{
             fontFamily: 'monospace',
-            fontSize: 9,
+            fontSize: labelSize,
             color: '#3d5068',
             letterSpacing: 2,
           }}
@@ -75,7 +81,7 @@ export default function TickerTape() {
   return (
     <div
       style={{
-        height: 32,
+        height: tapeHeight,
         background: '#080a0f',
         borderBottom: '1px solid #1e2a3a',
         overflow: 'hidden',
@@ -160,7 +166,7 @@ export default function TickerTape() {
               <span
                 style={{
                   fontFamily: 'monospace',
-                  fontSize: 10,
+                  fontSize: labelSize,
                   fontWeight: 700,
                   letterSpacing: 1,
                   color:
@@ -177,7 +183,7 @@ export default function TickerTape() {
               <span
                 style={{
                   fontFamily: 'monospace',
-                  fontSize: 11,
+                  fontSize: priceSize,
                   fontWeight: 700,
                   color: '#e8edf5',
                 }}
@@ -188,7 +194,7 @@ export default function TickerTape() {
               <span
                 style={{
                   fontFamily: 'monospace',
-                  fontSize: 9,
+                  fontSize: changeSize,
                   color,
                   display: 'inline-flex',
                   alignItems: 'center',

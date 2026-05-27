@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { ScanResult } from '@/lib/agents/scanner';
 import TradeModal from '@/components/trading/TradeModal';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const SIGNAL_TYPE_LABELS: Record<string, string> = {
   momentum_breakout: 'MOMENTUM BREAKOUT',
@@ -35,6 +36,7 @@ export default function TopSignalsRow({
   onRunScan,
   scanning,
 }: TopSignalsRowProps) {
+  const isMobile = useIsMobile();
   const [tradeTicker, setTradeTicker] = useState<string | null>(null);
   const [tradeStrength, setTradeStrength] = useState<'high' | 'medium' | 'low'>('medium');
   const [tradeLoading, setTradeLoading] = useState(false);
@@ -146,23 +148,30 @@ export default function TopSignalsRow({
             </button>
           </div>
         ) : (
-          <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] md:overflow-visible">
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile
+                ? '1fr'
+                : 'repeat(auto-fill, minmax(260px, 1fr))',
+              gap: 12,
+            }}
+          >
             {topSignals.map((signal) => {
               const sc = STRENGTH_COLORS[signal.strength];
               return (
                 <div
                   key={`${signal.ticker}-${signal.scanned_at}`}
                   style={{
-                    width: 280,
-                    minWidth: 280,
-                    height: 160,
+                    width: '100%',
+                    minWidth: 0,
+                    minHeight: 160,
                     background: '#0d1117',
                     border: '1px solid #1e2a3a',
                     borderRadius: 10,
                     padding: 14,
                     display: 'flex',
                     flexDirection: 'column',
-                    flexShrink: 0,
                   }}
                 >
                   <div

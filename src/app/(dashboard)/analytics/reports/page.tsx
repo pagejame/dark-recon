@@ -94,7 +94,7 @@ export default function WeeklyReportsPage() {
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
+    <div className="dr-page dr-page-narrow">
       <div style={{ marginBottom: 28 }}>
         <div
           style={{

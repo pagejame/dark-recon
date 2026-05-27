@@ -197,7 +197,7 @@ export default function AuditPage() {
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
+    <div className="dr-page">
       <div style={{ marginBottom: 24 }}>
         <div
           style={{

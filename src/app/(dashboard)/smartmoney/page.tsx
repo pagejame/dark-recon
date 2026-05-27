@@ -235,7 +235,7 @@ export default function SmartMoneyPage() {
   const maxTickerCount = Math.max(...topTickers.map((t) => t.count), 1);
 
   return (
-    <div className="mx-auto max-w-[1100px] px-3.5 py-6 md:p-6">
+    <div className="dr-page">
       <div style={{ marginBottom: 24 }}>
         <div
           style={{

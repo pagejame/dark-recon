@@ -175,7 +175,7 @@ export default function AlertsPage() {
   const accentColor = (c: 'above' | 'below') => (c === 'above' ? '#00ff88' : '#ff3d5a');
 
   return (
-    <div className="mx-auto max-w-[900px] px-3.5 py-6 md:p-6">
+    <div className="dr-page dr-page-narrow">
       {/* Header */}
       <div
         style={{

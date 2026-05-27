@@ -162,7 +162,7 @@ export default function SignalsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1000px] px-3.5 py-6 md:p-6">
+    <div className="dr-page dr-page-narrow">
       <div
         style={{
           display: 'flex',

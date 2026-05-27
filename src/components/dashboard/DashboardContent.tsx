@@ -638,7 +638,7 @@ export default function DashboardContent() {
             gap: 8,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div
               style={{
                 width: 8,
@@ -647,12 +647,13 @@ export default function DashboardContent() {
                 background: '#00ff88',
                 boxShadow: '0 0 8px #00ff88',
                 animation: 'pulse 2s infinite',
+                flexShrink: 0,
               }}
             />
             <span
               style={{
                 fontFamily: 'monospace',
-                fontSize: 10,
+                fontSize: 'clamp(8px, 2vw, 10px)',
                 color: '#00ff88',
                 letterSpacing: 2,
                 fontWeight: 700,
@@ -663,7 +664,7 @@ export default function DashboardContent() {
             <span
               style={{
                 fontFamily: 'monospace',
-                fontSize: 8,
+                fontSize: 'clamp(8px, 2vw, 10px)',
                 letterSpacing: 2,
                 padding: '3px 10px',
                 borderRadius: 20,
@@ -677,19 +678,18 @@ export default function DashboardContent() {
             <span
               style={{
                 fontFamily: 'monospace',
-                fontSize: 8,
+                fontSize: 'clamp(8px, 2vw, 10px)',
                 letterSpacing: 2,
                 padding: '3px 10px',
                 borderRadius: 20,
                 background: '#ffd70015',
                 border: '1px solid #ffd70040',
                 color: '#ffd700',
-                marginLeft: 8,
               }}
             >
               🧪 TESTING MODE — Agent every 30min
             </span>
-            <span style={{ fontSize: 13, color: '#7a8fa8' }}>
+            <span style={{ fontSize: 'clamp(11px, 3vw, 13px)', color: '#7a8fa8', width: '100%' }}>
               Dark Recon is trading itself — all decisions automated
             </span>
           </div>
@@ -735,7 +735,7 @@ export default function DashboardContent() {
             {marketOpen ? 'MARKET MOVERS (TODAY)' : 'PRE-MARKET MOVERS'}
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 140, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {upMovers.map((mover) => (
                 <div
                   key={mover.ticker}
@@ -771,7 +771,7 @@ export default function DashboardContent() {
             <div
               style={{
                 flex: 1,
-                minWidth: 140,
+                minWidth: 0,
                 display: 'flex',
                 flexWrap: 'wrap',
                 gap: 8,

@@ -230,7 +230,7 @@ export default function TradeQueueCard({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
           gap: 10,
           marginBottom: 14,
         }}

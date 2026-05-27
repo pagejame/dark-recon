@@ -70,7 +70,7 @@ export default function QueuePage() {
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
+    <div className="dr-page dr-page-tight">
       <div
         style={{
           display: 'flex',

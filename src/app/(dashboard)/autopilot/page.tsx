@@ -219,7 +219,7 @@ export default function AutopilotPage() {
   );
 
   return (
-    <div className="mx-auto max-w-[1100px] px-3.5 py-6 md:p-6">
+    <div className="dr-page">
       <div
         style={{
           display: 'flex',

@@ -237,7 +237,7 @@ export default function PortfolioPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1100px] px-3.5 py-6 md:p-6">
+    <div className="dr-page">
       <div style={{ marginBottom: 24 }}>
         <div
           style={{
@@ -253,7 +253,7 @@ export default function PortfolioPage() {
         <h1
           style={{
             fontFamily: 'Syne, sans-serif',
-            fontSize: 24,
+            fontSize: 'clamp(20px, 5vw, 32px)',
             fontWeight: 800,
             color: '#e8edf5',
             margin: 0,
@@ -261,7 +261,7 @@ export default function PortfolioPage() {
         >
           Portfolio
         </h1>
-        <div style={{ fontSize: 13, color: '#7a8fa8', marginTop: 4 }}>
+        <div style={{ fontSize: 'clamp(11px, 3vw, 14px)', color: '#7a8fa8', marginTop: 4 }}>
           Alpaca paper trading account
         </div>
       </div>
@@ -545,8 +545,8 @@ export default function PortfolioPage() {
             No open positions — confirmed signals will appear here
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="dr-table-wrap">
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
               <thead>
                 <tr>
                   {['SYMBOL', 'QTY', 'ENTRY', 'CURRENT', 'MKT VALUE', 'P&L ($)', 'P&L (%)', ''].map(
@@ -650,8 +650,8 @@ export default function PortfolioPage() {
             No recent orders
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="dr-table-wrap">
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
               <thead>
                 <tr>
                   {['SYMBOL', 'SIDE', 'QTY', 'TYPE', 'STATUS', 'FILLED', 'TIME', ''].map((h) => (

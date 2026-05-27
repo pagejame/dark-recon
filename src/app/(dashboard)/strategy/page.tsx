@@ -424,7 +424,7 @@ export default function StrategyPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1100px] px-3.5 py-6 md:p-6">
+    <div className="dr-page">
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: '#00ff88', marginBottom: 6 }}>
           ◆ DARK RECON

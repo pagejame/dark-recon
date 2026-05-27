@@ -247,7 +247,7 @@ export default function AnalyticsPage() {
   const maxSymbolCount = Math.max(...(data?.top_symbols.map((s) => s.count) || [1]), 1);
 
   return (
-    <div className="mx-auto max-w-[1100px] px-3.5 py-6 md:p-6">
+    <div className="dr-page">
       <div style={{ marginBottom: 24 }}>
         <div
           style={{

@@ -474,7 +474,7 @@ export default function SettingsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-[1000px] px-3.5 py-6 md:p-6">
+    <div className="dr-page dr-page-narrow">
       <div style={{ marginBottom: 28 }}>
         <div
           style={{
@@ -490,7 +490,7 @@ export default function SettingsPage() {
         <h1
           style={{
             fontFamily: 'Syne, sans-serif',
-            fontSize: 24,
+            fontSize: 'clamp(20px, 5vw, 32px)',
             fontWeight: 800,
             color: '#e8edf5',
             margin: 0,
@@ -498,7 +498,7 @@ export default function SettingsPage() {
         >
           Settings
         </h1>
-        <div style={{ fontSize: 13, color: '#7a8fa8', marginTop: 4 }}>
+        <div style={{ fontSize: 'clamp(11px, 3vw, 14px)', color: '#7a8fa8', marginTop: 4 }}>
           Configure risk, agents, and notifications
         </div>
       </div>

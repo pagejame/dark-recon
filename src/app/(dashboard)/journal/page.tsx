@@ -162,9 +162,11 @@ export default function JournalPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="dr-page dr-page-narrow space-y-6">
       <div>
-        <h1 className="font-heading text-2xl font-bold text-text-primary">Trade Journal</h1>
+        <h1 className="font-heading text-[clamp(1.25rem,5vw,1.5rem)] font-bold text-text-primary">
+          Trade Journal
+        </h1>
         <p className="mt-1 text-sm text-text-secondary">
           Document trades, track results, and capture lessons.
         </p>

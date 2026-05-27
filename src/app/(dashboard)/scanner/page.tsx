@@ -190,7 +190,7 @@ export default function MarketScannerPage() {
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
+    <div className="dr-page">
       <div style={{ marginBottom: 28 }}>
         <div
           style={{
@@ -216,7 +216,7 @@ export default function MarketScannerPage() {
             <h1
               style={{
                 fontFamily: 'Syne, sans-serif',
-                fontSize: 24,
+                fontSize: 'clamp(20px, 5vw, 32px)',
                 fontWeight: 800,
                 color: '#e8edf5',
                 margin: 0,
@@ -224,7 +224,7 @@ export default function MarketScannerPage() {
             >
               Market Scanner
             </h1>
-            <div style={{ fontSize: 13, color: '#7a8fa8', marginTop: 4 }}>
+            <div style={{ fontSize: 'clamp(11px, 3vw, 14px)', color: '#7a8fa8', marginTop: 4 }}>
               Scanning {scanData?.total_scanned || '—'} stocks across S&P 500 + NASDAQ 100 + social
               sentiment
             </div>
@@ -403,7 +403,7 @@ export default function MarketScannerPage() {
                     {sentiment.fear_greed.label}
                   </div>
                 </div>
-                <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, color: '#7a8fa8', lineHeight: 1.6 }}>
                     {sentiment.fear_greed.trading_signal}
                   </div>
@@ -1073,7 +1073,8 @@ export default function MarketScannerPage() {
                 overflow: 'hidden',
               }}
             >
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div className="dr-table-wrap">
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #1e2a3a' }}>
                     {(
@@ -1190,6 +1191,7 @@ export default function MarketScannerPage() {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         </>

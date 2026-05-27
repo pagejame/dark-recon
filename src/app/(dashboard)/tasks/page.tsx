@@ -58,7 +58,7 @@ export default function TasksPage() {
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 700, margin: '0 auto' }}>
+    <div className="dr-page dr-page-tight">
       <div style={{ marginBottom: 24 }}>
         <div
           style={{
