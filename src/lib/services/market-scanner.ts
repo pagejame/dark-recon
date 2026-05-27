@@ -6,6 +6,11 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getMarketSymbols } from './market-symbols';
 import { runMomentumScreener, saveMomentumResults, type MomentumStock } from './momentum-screener';
 import { getSectorRotation, type SectorRotation } from './sector-rotation';
+import {
+  scanTwitterIntelligence,
+  saveTwitterSignals,
+  type TwitterSignal,
+} from '@/lib/api/twitter-intel';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
@@ -316,6 +321,7 @@ export async function runFullMarketScan(): Promise<{
   momentum_leaders: MomentumStock[];
   macro_snapshot: MacroSnapshot;
   analyst_picks: AnalystData[];
+  twitter_signals: TwitterSignal[];
 }> {
   const supabase = createAdminClient();
 
@@ -353,8 +359,14 @@ export async function runFullMarketScan(): Promise<{
       momentum_leaders: [],
       macro_snapshot: macroFallback,
       analyst_picks: [],
+      twitter_signals: [],
     };
   }
+
+  const twitterPromise = Promise.race([
+    scanTwitterIntelligence(),
+    new Promise<TwitterSignal[]>((resolve) => setTimeout(() => resolve([]), 10000)),
+  ]);
 
   const [
     gapSignals,
@@ -366,6 +378,7 @@ export async function runFullMarketScan(): Promise<{
     sectorData,
     macroData,
     analystPicks,
+    twitterSignals,
   ] = await Promise.all([
     scanPreMarketGaps(allSymbols),
     scanSocialTrending(),
@@ -376,7 +389,28 @@ export async function runFullMarketScan(): Promise<{
     getSectorRotation(),
     getMacroSnapshot(),
     getTopAnalystPicks(allSymbols.slice(0, 50), 15),
+    twitterPromise.catch(() => [] as TwitterSignal[]),
   ]);
+
+  if (twitterSignals.length > 0) {
+    await saveTwitterSignals(twitterSignals).catch(console.error);
+  }
+
+  twitterSignals.forEach((signal) => {
+    signal.tickers.forEach((ticker) => {
+      gapSignals.push({
+        ticker,
+        scan_type: 'twitter_intel',
+        signal_strength: signal.conviction * 10,
+        signal_data: {
+          account: signal.account,
+          tweet: signal.tweet.slice(0, 200),
+          signal_type: signal.signal_type,
+        },
+        raw_reason: `@${signal.account}: ${signal.summary}`,
+      });
+    });
+  });
 
   analystPicks.slice(0, 8).forEach((pick) => {
     gapSignals.push({
@@ -426,6 +460,7 @@ export async function runFullMarketScan(): Promise<{
       momentum_leaders: momentumData.high_momentum.slice(0, 5),
       macro_snapshot: macroData,
       analyst_picks: analystPicks.slice(0, 5),
+      twitter_signals: twitterSignals,
     };
   }
 
@@ -622,5 +657,6 @@ Be selective — only include tickers with genuine actionable signals. Skip nois
     momentum_leaders: momentumData.high_momentum.slice(0, 5),
     macro_snapshot: macroData,
     analyst_picks: analystPicks.slice(0, 5),
+    twitter_signals: twitterSignals,
   };
 }

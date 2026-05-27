@@ -327,6 +327,32 @@ Executed today: ${executedToday.length}`);
     }
 
     try {
+      const { scanTwitterIntelligence, saveTwitterSignals } = await import(
+        '@/lib/api/twitter-intel'
+      );
+      const twitterSignals = await Promise.race([
+        scanTwitterIntelligence(),
+        new Promise<Awaited<ReturnType<typeof scanTwitterIntelligence>>>((resolve) =>
+          setTimeout(() => resolve([]), 10000)
+        ),
+      ]).catch(() => [] as Awaited<ReturnType<typeof scanTwitterIntelligence>>);
+
+      if (twitterSignals.length > 0) {
+        await saveTwitterSignals(twitterSignals);
+        tier2Sections.push(
+          `TWITTER INTELLIGENCE (live):
+${twitterSignals
+  .slice(0, 5)
+  .map((s) => `  @${s.account} [${s.strength}]: ${s.summary}`)
+  .join('\n')}`
+        );
+        freshData.twitter_signals = twitterSignals;
+      }
+    } catch {
+      /* skip */
+    }
+
+    try {
       const confirmedSignals = await withTier2Timeout(
         runSignalConfirmation(),
         'Signal confirmation'

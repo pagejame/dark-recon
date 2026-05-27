@@ -8,6 +8,7 @@ import type { SectorRotation } from '@/lib/services/sector-rotation';
 import type { MomentumStock } from '@/lib/services/momentum-screener';
 import type { FearGreedData, EconomicEvent } from '@/lib/api/market-sentiment';
 import type { InsiderTrade } from '@/lib/api/fmp';
+import type { TwitterSignal } from '@/lib/api/twitter-intel';
 
 interface ScannerResult {
   ticker: string;
@@ -30,6 +31,7 @@ interface ScanResponse {
   momentum_leaders?: MomentumStock[];
   macro_snapshot?: MacroSnapshot;
   analyst_picks?: AnalystData[];
+  twitter_signals?: TwitterSignal[];
   scanned_at?: string;
   cached?: boolean;
 }
@@ -64,6 +66,7 @@ const SCAN_TYPE_LABELS: Record<string, string> = {
   unusual_volume: 'UNUSUAL VOLUME',
   momentum: 'MOMENTUM',
   multi_signal: 'MULTI SIGNAL',
+  twitter_intel: 'TWITTER INTEL',
 };
 
 function scanTypeLabel(type: string) {
@@ -429,6 +432,100 @@ export default function MarketScannerPage() {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {scanData?.twitter_signals && scanData.twitter_signals.length > 0 && (
+            <div
+              style={{
+                background: '#111620',
+                border: '1px solid #1e2a3a',
+                borderLeft: '3px solid #1d9bf0',
+                borderRadius: 10,
+                padding: 20,
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  letterSpacing: 3,
+                  color: '#1d9bf0',
+                  marginBottom: 14,
+                }}
+              >
+                𝕏 TWITTER INTELLIGENCE
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {scanData.twitter_signals.slice(0, 5).map((signal, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: '#0d1117',
+                      border: '1px solid #1e2a3a',
+                      borderRadius: 8,
+                      padding: '10px 14px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <span
+                        style={{ fontFamily: 'monospace', fontSize: 10, color: '#1d9bf0' }}
+                      >
+                        @{signal.account}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'monospace',
+                          fontSize: 8,
+                          padding: '2px 8px',
+                          borderRadius: 10,
+                          background:
+                            signal.strength === 'high' ? '#00ff8815' : '#ffd70015',
+                          color: signal.strength === 'high' ? '#00ff88' : '#ffd700',
+                          border: `1px solid ${signal.strength === 'high' ? '#00ff8830' : '#ffd70030'}`,
+                        }}
+                      >
+                        {signal.strength.toUpperCase()}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: '#e8edf5',
+                        lineHeight: 1.5,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {signal.summary}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {signal.tickers.map((ticker) => (
+                        <span
+                          key={ticker}
+                          style={{
+                            fontFamily: 'monospace',
+                            fontSize: 10,
+                            color: '#ffd700',
+                            background: '#ffd70010',
+                            border: '1px solid #ffd70030',
+                            padding: '2px 8px',
+                            borderRadius: 10,
+                          }}
+                        >
+                          {ticker}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

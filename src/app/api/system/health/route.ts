@@ -502,6 +502,32 @@ async function checkCircuitBreakerHealth(): Promise<HealthCheck> {
   }
 }
 
+async function checkTwitterIntel(): Promise<HealthCheck> {
+  try {
+    const res = await fetch('https://nitter.privacydev.net/elonmusk/rss', {
+      signal: AbortSignal.timeout(4000),
+    });
+    if (res.ok) {
+      return {
+        name: 'Twitter Intelligence',
+        status: 'pass',
+        message: 'Nitter RSS feed accessible — Twitter scanning active',
+      };
+    }
+    return {
+      name: 'Twitter Intelligence',
+      status: 'warn',
+      message: 'Primary Nitter instance down — trying fallbacks',
+    };
+  } catch {
+    return {
+      name: 'Twitter Intelligence',
+      status: 'warn',
+      message: 'Twitter intelligence temporarily unavailable — non-critical',
+    };
+  }
+}
+
 export async function GET() {
   const checks = await Promise.all([
     checkEnvVars(),
@@ -517,6 +543,7 @@ export async function GET() {
     checkResend(),
     checkCronRuns(),
     checkCircuitBreakerHealth(),
+    checkTwitterIntel(),
   ]);
 
   const passing = checks.filter((c) => c.status === 'pass').length;
