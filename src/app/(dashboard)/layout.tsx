@@ -13,11 +13,11 @@ export default function DashboardLayout({
     <>
       <div className="flex min-h-screen min-w-0 flex-row overflow-x-hidden bg-bg-primary">
         <Sidebar />
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col md:min-h-screen md:overflow-hidden">
           <TopBar />
           <TickerTape />
           <PullToRefresh>
-            <main className="min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto p-3.5 pb-[calc(4rem+env(safe-area-inset-bottom))] md:p-6 md:pb-6">
+            <main className="main-content w-full p-3.5 md:p-6">
               {children}
             </main>
           </PullToRefresh>
