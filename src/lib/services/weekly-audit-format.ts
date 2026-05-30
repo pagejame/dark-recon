@@ -38,6 +38,10 @@ export interface WeeklyAuditReport {
     high_conviction: number;
     acted_on: number;
     act_rate: number;
+    executed: number;
+    expired: number;
+    pending: number;
+    high_conviction_executed: number;
     by_type: Record<string, number>;
     top_tickers: string[];
   };
@@ -98,6 +102,11 @@ ${Object.entries(report.trades.by_signal_source)
 - Stop Losses Triggered: ${report.risk_events.stop_losses_triggered}
 - Rebalances Executed: ${report.risk_events.rebalances_executed}
 ${report.risk_events.positions_closed_by_stop.length > 0 ? `- Positions Stopped Out: ${report.risk_events.positions_closed_by_stop.join(', ')}` : ''}
+
+## Signals
+- Total: ${report.signals.total_fired} | Executed: ${report.signals.executed} (${report.signals.act_rate.toFixed(1)}% act rate)
+- Expired: ${report.signals.expired} | Still pending: ${report.signals.pending}
+- High conviction: ${report.signals.high_conviction} (${report.signals.high_conviction_executed} executed)
 
 ## Intelligence
 - Sweeps Run: ${report.intelligence.sweeps_run}

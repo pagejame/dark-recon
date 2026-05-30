@@ -21,10 +21,22 @@ interface AuditEventRow {
   ticker?: string | null;
   action_taken: string;
   outcome?: string | null;
-  pnl_pct?: number | null;
-  pnl_dollar?: number | null;
+  pnl_pct?: number | string | null;
+  pnl_dollar?: number | string | null;
+  dollar_amount?: number | string | null;
   signal_sources?: string[] | null;
   event_at: string;
+}
+
+function safePnlPct(event: AuditEventRow): number {
+  const pct = parseFloat(String(event.pnl_pct ?? '0'));
+  if (!isNaN(pct) && Math.abs(pct) <= 100) return pct;
+
+  const pnlDollar = parseFloat(String(event.pnl_dollar ?? '0'));
+  const amount = parseFloat(String(event.dollar_amount ?? '0'));
+  if (amount > 0) return (pnlDollar / amount) * 100;
+
+  return 0;
 }
 
 interface CronRunRow {
@@ -88,6 +100,14 @@ Total fired: ${reportData.signals.total_fired}
 High conviction: ${reportData.signals.high_conviction}
 Acted on: ${reportData.signals.acted_on} (${reportData.signals.act_rate.toFixed(1)}% act rate)
 Top tickers mentioned: ${reportData.signals.top_tickers.join(', ')}
+
+SIGNAL DISPOSITION THIS WEEK:
+Total signals: ${reportData.signals.total_fired}
+Executed: ${reportData.signals.executed} (${reportData.signals.act_rate.toFixed(1)}% act rate)
+Expired without action: ${reportData.signals.expired}
+Still pending: ${reportData.signals.pending}
+High conviction signals: ${reportData.signals.high_conviction}
+High conviction executed: ${reportData.signals.high_conviction_executed}
 
 Provide:
 1. A 3-4 paragraph analysis of this week's performance — what worked, what didn't, patterns you see
@@ -183,13 +203,24 @@ export async function generateWeeklyAuditReport(): Promise<WeeklyAuditReport> {
   const tradeEvents = events.filter((e) =>
     ['trade_executed', 'trade_approved'].includes(e.event_type)
   );
-  const wins = events.filter((e) => e.outcome === 'win');
-  const losses = events.filter((e) => e.outcome === 'loss');
+  const tradeCloses = events.filter(
+    (e) =>
+      e.event_type === 'position_closed' ||
+      (e.event_type === 'trade_executed' &&
+        e.outcome !== 'pending' &&
+        e.outcome !== 'not_applicable')
+  );
+  const wins = tradeCloses.filter((e) => e.outcome === 'win');
+  const losses = tradeCloses.filter((e) => e.outcome === 'loss');
 
   const avgWinPct =
-    wins.length > 0 ? wins.reduce((sum, e) => sum + (e.pnl_pct || 0), 0) / wins.length : 0;
+    wins.length > 0
+      ? wins.reduce((sum, e) => sum + safePnlPct(e), 0) / wins.length
+      : 0;
   const avgLossPct =
-    losses.length > 0 ? losses.reduce((sum, e) => sum + (e.pnl_pct || 0), 0) / losses.length : 0;
+    losses.length > 0
+      ? losses.reduce((sum, e) => sum + safePnlPct(e), 0) / losses.length
+      : 0;
 
   const bySignalSource: Record<string, { trades: number; wins: number; win_rate: number }> = {};
   tradeEvents.forEach((e) => {
@@ -239,15 +270,21 @@ export async function generateWeeklyAuditReport(): Promise<WeeklyAuditReport> {
     .eq('job_name', 'position-monitor')
     .gte('ran_at', weekStartStr);
 
-  const { data: signals } = await supabase
+  const { data: signalDispositions } = await supabase
     .from('signals')
-    .select('*')
-    .gte('created_at', weekStartStr);
+    .select('ticker, signal_type, strength, status, notes, created_at')
+    .gte('created_at', weekStartStr)
+    .order('created_at', { ascending: false });
 
-  const allSignals = signals || [];
+  const allSignals = signalDispositions || [];
   const highConviction = allSignals.filter((s: { strength: string }) => s.strength === 'high');
-  const actedOn = allSignals.filter((s: { status: string }) =>
-    ['confirmed', 'executed'].includes(s.status)
+  const executed = allSignals.filter((s: { status: string }) => s.status === 'executed');
+  const expired = allSignals.filter((s: { status: string }) => s.status === 'expired');
+  const pending = allSignals.filter((s: { status: string }) => s.status === 'pending');
+  const signalActRate =
+    allSignals.length > 0 ? (executed.length / allSignals.length) * 100 : 0;
+  const highConvictionExecuted = executed.filter(
+    (s: { strength: string }) => s.strength === 'high'
   );
   const tickerCounts: Record<string, number> = {};
   allSignals.forEach((s: { ticker?: string }) => {
@@ -282,11 +319,11 @@ export async function generateWeeklyAuditReport(): Promise<WeeklyAuditReport> {
       wins: wins.length,
       losses: losses.length,
       win_rate:
-        tradeEvents.length > 0
+        wins.length + losses.length > 0
           ? (wins.length / Math.max(1, wins.length + losses.length)) * 100
           : 0,
-      avg_win_pct: avgWinPct * 100,
-      avg_loss_pct: avgLossPct * 100,
+      avg_win_pct: avgWinPct,
+      avg_loss_pct: avgLossPct,
       largest_win: { ticker: largestWin.ticker || 'N/A', pnl: largestWin.pnl_dollar || 0 },
       largest_loss: { ticker: largestLoss.ticker || 'N/A', pnl: largestLoss.pnl_dollar || 0 },
       by_signal_source: bySignalSource,
@@ -304,8 +341,12 @@ export async function generateWeeklyAuditReport(): Promise<WeeklyAuditReport> {
     signals: {
       total_fired: allSignals.length,
       high_conviction: highConviction.length,
-      acted_on: actedOn.length,
-      act_rate: allSignals.length > 0 ? (actedOn.length / allSignals.length) * 100 : 0,
+      acted_on: executed.length,
+      act_rate: signalActRate,
+      executed: executed.length,
+      expired: expired.length,
+      pending: pending.length,
+      high_conviction_executed: highConvictionExecuted.length,
       by_type: byType,
       top_tickers: topTickers,
     },

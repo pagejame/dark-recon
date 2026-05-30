@@ -1054,6 +1054,38 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
     duration_ms: 0,
   };
 
+  const pendingConfirmedSignals = fresh_data.confirmed_signals as
+    | Array<{ ticker: string; notes?: string }>
+    | undefined;
+
+  if (
+    decisions.some((d) => d.action === 'SKIP') &&
+    pendingConfirmedSignals &&
+    pendingConfirmedSignals.length > 0
+  ) {
+    const skipRationale =
+      decisions.find((d) => d.action === 'SKIP')?.rationale?.slice(0, 100) || 'No action';
+    for (const signal of pendingConfirmedSignals.slice(0, 3)) {
+      const { error } = await supabase
+        .from('signals')
+        .update({
+          notes: `${signal.notes || ''} | SKIP: ${skipRationale}`.trim(),
+        })
+        .eq('ticker', signal.ticker)
+        .eq('status', 'pending');
+      if (error) console.error('Signal SKIP disposition error:', error);
+    }
+  }
+
+  async function markSignalExecuted(ticker: string): Promise<void> {
+    const { error } = await supabase
+      .from('signals')
+      .update({ status: 'executed' })
+      .eq('ticker', ticker)
+      .eq('status', 'pending');
+    if (error) console.error('Signal executed disposition error:', error);
+  }
+
   function isMaintenanceEndpoint(endpoint: string): boolean {
     return (
       endpoint.includes('alerts') ||
@@ -1116,6 +1148,7 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
             `[AGENT] Trade executed: ${decision.ticker} — ${execResult.shares} shares @ $${execResult.price?.toFixed(2)}`
           );
           result.executed++;
+          await markSignalExecuted(decision.ticker);
           await logAuditEvent({
             event_type: 'autopilot_action_taken',
             ticker: decision.ticker,
@@ -1174,6 +1207,7 @@ ${autonomy.enabled ? 'In full autonomy mode, AUTO_EXECUTE qualifying trades dire
         const executed = await executeQueueTradeByTicker(decision.ticker);
         if (executed) {
           result.executed++;
+          await markSignalExecuted(decision.ticker);
           await logAuditEvent({
             event_type: 'autopilot_action_taken',
             ticker: decision.ticker,

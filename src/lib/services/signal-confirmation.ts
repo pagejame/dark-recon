@@ -31,11 +31,21 @@ export async function runSignalConfirmation(): Promise<ConfirmedSignal[]> {
   const supabase = createAdminClient();
 
   try {
-    await supabase
+    const expireBefore = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+    const { data: expiringSignals } = await supabase
       .from('signals')
-      .update({ status: 'expired' })
+      .select('*')
       .eq('status', 'pending')
-      .lt('created_at', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString());
+      .lt('created_at', expireBefore);
+
+    for (const signal of expiringSignals || []) {
+      const notes = `${signal.notes || ''} | EXPIRED: No execution in 4h window`.trim();
+      const { error } = await supabase
+        .from('signals')
+        .update({ status: 'expired', notes })
+        .eq('id', signal.id);
+      if (error) console.error('Signal expire update error:', error);
+    }
   } catch (e) {
     console.error('Signal expiry cleanup error:', e);
   }

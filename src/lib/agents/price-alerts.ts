@@ -9,6 +9,8 @@ export interface PriceAlertRow {
   status: string;
   note?: string | null;
   triggered_at?: string | null;
+  last_fired_at?: string | null;
+  fire_count?: number | null;
   created_at: string;
 }
 
@@ -81,6 +83,8 @@ export async function checkPriceAlerts(
 
   const now = new Date().toISOString();
 
+  const cooldownMs = 30 * 60 * 1000;
+
   for (const alert of typedAlerts) {
     const currentPrice = prices[alert.ticker];
     if (!currentPrice) continue;
@@ -90,19 +94,36 @@ export async function checkPriceAlerts(
       .update({ current_price: currentPrice, updated_at: now })
       .eq('id', alert.id);
 
-    if (isTriggered(alert, currentPrice)) {
+    if (!isTriggered(alert, currentPrice)) continue;
+
+    const fireCount = alert.fire_count || 0;
+    if (fireCount >= 5) {
       await supabase
         .from('price_alerts')
-        .update({
-          status: 'triggered',
-          current_price: currentPrice,
-          triggered_at: now,
-          updated_at: now,
-        })
+        .update({ status: 'dismissed', updated_at: now })
         .eq('id', alert.id);
-
-      triggered.push({ ...alert, current_price: currentPrice });
+      console.log(`Alert auto-dismissed after 5 fires: ${alert.ticker}`);
+      continue;
     }
+
+    const lastFired = alert.last_fired_at ? new Date(alert.last_fired_at) : null;
+    if (lastFired && Date.now() - lastFired.getTime() < cooldownMs) {
+      continue;
+    }
+
+    await supabase
+      .from('price_alerts')
+      .update({
+        last_fired_at: now,
+        fire_count: fireCount + 1,
+        status: 'triggered',
+        current_price: currentPrice,
+        triggered_at: alert.triggered_at || now,
+        updated_at: now,
+      })
+      .eq('id', alert.id);
+
+    triggered.push({ ...alert, current_price: currentPrice });
   }
 
   return { triggered, checked: typedAlerts.length, prices };
