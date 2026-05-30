@@ -239,7 +239,8 @@ export async function generateWeeklyAuditReport(): Promise<WeeklyAuditReport> {
 
   const pnlEvents = events.filter((e) => e.pnl_dollar !== null && e.pnl_dollar !== undefined);
   const sortedByPnL = [...pnlEvents].sort(
-    (a, b) => (b.pnl_dollar || 0) - (a.pnl_dollar || 0)
+    (a, b) =>
+      (parseFloat(String(b.pnl_dollar)) || 0) - (parseFloat(String(a.pnl_dollar)) || 0)
   );
   const largestWin = sortedByPnL[0] || { ticker: 'N/A', pnl_dollar: 0 };
   const largestLoss = sortedByPnL[sortedByPnL.length - 1] || { ticker: 'N/A', pnl_dollar: 0 };
@@ -324,8 +325,14 @@ export async function generateWeeklyAuditReport(): Promise<WeeklyAuditReport> {
           : 0,
       avg_win_pct: avgWinPct,
       avg_loss_pct: avgLossPct,
-      largest_win: { ticker: largestWin.ticker || 'N/A', pnl: largestWin.pnl_dollar || 0 },
-      largest_loss: { ticker: largestLoss.ticker || 'N/A', pnl: largestLoss.pnl_dollar || 0 },
+      largest_win: {
+        ticker: largestWin.ticker || 'N/A',
+        pnl: parseFloat(String(largestWin.pnl_dollar)) || 0,
+      },
+      largest_loss: {
+        ticker: largestLoss.ticker || 'N/A',
+        pnl: parseFloat(String(largestLoss.pnl_dollar)) || 0,
+      },
       by_signal_source: bySignalSource,
     },
     agent: {
